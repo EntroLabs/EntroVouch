@@ -276,7 +276,32 @@ def _check_python_ast(src: str, path: Path, rel: str) -> list[CryptoUse]:
             if real == "hashlib":
                 if attr in HASHES:
                     p, c, q = HASHES[attr]
-                    out.append(CryptoUse(rel, node.lineno, p, c, q, f"hashlib.{attr}(...)"))
+                    # ⭐ `usedforsecurity=False` is the CODEBASE ANSWERING THE
+                    # QUESTION. Python 3.9+ (and FIPS builds) accept it to mark a
+                    # hash as non-security -- a checksum, a cache key, an etag.
+                    #
+                    # Measured 2026-08-31 over 20 well-known repositories: real
+                    # `hashlib.md5(x, usedforsecurity=False)` and
+                    # `hashlib.sha1(s, usedforsecurity=False)` calls were being
+                    # reported as BROKEN. They are not a weakness; they are a
+                    # maintainer having already made and DOCUMENTED the judgement
+                    # this tool asks a reader to make.
+                    #
+                    # ⚠️ Downgraded to REVIEW rather than dropped. The flag is an
+                    # assertion by the author, and an assertion is exactly what
+                    # this package refuses to take on trust -- a reader should
+                    # still see the primitive, with the author's claim attached.
+                    nonsec = any(
+                        kw.arg == "usedforsecurity"
+                        and isinstance(kw.value, ast.Constant) and kw.value.value is False
+                        for kw in node.keywords)
+                    if nonsec and q in {"BROKEN", "GROVER-REDUCED"}:
+                        out.append(CryptoUse(
+                            rel, node.lineno, p, c, "REVIEW",
+                            f"hashlib.{attr}(..., usedforsecurity=False) — declared "
+                            "non-security by the author; verify the declaration, do not assume it"))
+                    else:
+                        out.append(CryptoUse(rel, node.lineno, p, c, q, f"hashlib.{attr}(...)"))
                 elif attr in KDF_FUNCS:
                     p, c, q = KDF_FUNCS[attr]
                     out.append(CryptoUse(rel, node.lineno, p, c, q, f"hashlib.{attr}(...)"))
@@ -303,7 +328,20 @@ def _check_python_ast(src: str, path: Path, rel: str) -> list[CryptoUse]:
         elif isinstance(node, ast.Attribute) and node.attr in HASHES:
             if aliases.get(_attr_root(node), _attr_root(node)) == "hashlib":
                 p, c, q = HASHES[node.attr]
-                out.append(CryptoUse(rel, node.lineno, p, c, q, f"hashlib.{node.attr}"))
+                # ⚠️ Skip when the CALL path already reported this exact site.
+                #
+                # Dedup keys on (file, line, primitive, STATUS), so the moment the
+                # call path could emit a different status for the same site -- which
+                # it now can, via `usedforsecurity=False` -- the two stopped
+                # collapsing and one finding became two. Measured: 90 components
+                # became 94 with no new code scanned.
+                #
+                # ⭐ The general form, worth stating: CHANGING A VALUE THAT IS PART
+                # OF A DEDUP KEY SILENTLY DISABLES THE DEDUP. Nothing errors; the
+                # count just quietly inflates.
+                if not any(u.file == rel and u.line == node.lineno and u.primitive == p
+                           for u in out):
+                    out.append(CryptoUse(rel, node.lineno, p, c, q, f"hashlib.{node.attr}"))
     return out
 
 

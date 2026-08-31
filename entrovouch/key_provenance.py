@@ -61,9 +61,67 @@ _NOT_KEY_MATERIAL = re.compile(
     # Added 2026-08-14 after a second estate run: `key_expr` (a sort-key
     # EXPRESSION in a compiler) read as key material. "key" means a mapping or
     # sort key far more often than a secret.
-    r"|_expr$|_exprs$|_expression$|_fn$|_func$|_getter$)",
+    r"|_expr$|_exprs$|_expression$|_fn$|_func$|_getter$"
+    # Added 2026-08-31 from the 20-repository measurement: `key_repr` (a repr
+    # string), `token_str` (a parser slice), `key_derivation` ("hmac", which
+    # names an ALGORITHM).
+    r"|_repr$|_str$|_derivation$|_kind$|_type$|_mode$)",
     re.IGNORECASE,
 )
+
+# ---------------------------------------------------------------------------
+# ⭐ THE PREFIX AND THE VALUE, added 2026-08-31 — and the reason is a measurement.
+#
+# Run over 20 well-known Python repositories, this detector produced 23 findings
+# of which **16 were false positives: a 70% rate**, against a published tool-
+# abandonment threshold of 20-30%. Every one was the same shape:
+#
+#     CONFIGFILE_KEY = 'pydantic-mypy'        ROOT_KEY = '__root__'
+#     ENV_VAR_KEY    = "TOX_PARALLEL_ENV"     meta_schema_key = "meta schema id"
+#
+# An UPPERCASE `*_KEY` constant whose value is an identifier, a dunder or an
+# env-var name. **That is a MAPPING key, not key material.**
+#
+# 🔴 The rule that produced them judged only the NAME, and only its SUFFIX. It
+# never looked at the VALUE, which is the stronger signal, and it had no notion
+# of a PREFIX — so `_NOT_KEY_MATERIAL` could only ever grow one entry at a time
+# behind an unbounded set of real-world names. Two structural tests replace that
+# treadmill.
+#
+# ⚠️ Neither test may suppress `SECRET_KEY = "dev"`, which is a TRUE positive
+# whose value is also a plain identifier. That is why the value test is limited
+# to shapes a secret never takes, and the name test looks at what is being
+# KEYED rather than at the word "key".
+# ---------------------------------------------------------------------------
+
+# Values a secret never has: a dunder, or an ENV_VAR_SHAPED_NAME.
+_NON_SECRET_VALUE = re.compile(r"^(?:__\w+__|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)$")
+
+# `<thing>_KEY` where <thing> is what is being keyed, not a secrecy qualifier.
+# `SECRET_KEY`, `API_KEY`, `SIGNING_KEY`, `TEST_KEY` are untouched by design.
+_KEYED_THING = re.compile(
+    r"(?:^|_)(config|configfile|metadata|meta|root|env|envvar|var|schema|markup|"
+    r"mode|cache|index|sort|group|lookup|dict|map|section|option|setting|entry|"
+    r"item|record|node|param|arg|validator|partition|bucket|shard)"
+    r"[a-z0-9_]*_key$",
+    re.IGNORECASE,
+)
+
+
+def _is_mapping_key(name: str, value) -> bool:
+    """True when a `*_key` name holds a MAPPING key rather than key material.
+
+    Two independent tests, either sufficient:
+      * the VALUE is a dunder or an env-var-shaped constant name
+      * the NAME says what is being keyed (`CONFIGFILE_KEY`, `meta_schema_key`)
+
+    ⭐ Deliberately NOT another entry in a suffix list. The suffix list grows one
+    real-world name at a time and can never be finished; these two tests are
+    properties of the shape.
+    """
+    if isinstance(value, str) and _NON_SECRET_VALUE.match(value):
+        return True
+    return bool(_KEYED_THING.search(name))
 
 # WHERE KEY MATERIAL ACTUALLY SITS, PER FUNCTION.
 #
@@ -282,7 +340,7 @@ def _scan_python(path: Path, rel: str) -> list[KeyFinding]:
             for t in node.targets:
                 if isinstance(t, ast.Name) and _KEY_NAME.search(t.id) \
                         and not _NOT_KEY_MATERIAL.search(t.id) \
-                        and not _is_ordinary_programming_noun(t.id, node.value.value):
+                        and not _is_ordinary_programming_noun(t.id, node.value.value)                         and not _is_mapping_key(t.id, node.value.value):
                     out.append(KeyFinding(
                         rel, node.lineno, "literal-key",
                         f"{t.id} is assigned a literal in source"))

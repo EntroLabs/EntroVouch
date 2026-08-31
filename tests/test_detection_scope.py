@@ -323,3 +323,83 @@ def test_the_interpreter_relay_is_a_named_blind_spot(tmp_path):
            "subprocess.run([sys.executable, '-c', \"import urllib.request\"])\n")
     assert _egress_kinds(tmp_path) == set(), \
         "the interpreter relay is now caught - re-measure the false-positive cost on real repositories before keeping this"
+
+
+# --------------------------------------------------------------------------
+# KEY PROVENANCE — mapping keys are not key material.
+#
+# Measured over 20 well-known Python repositories: 23 findings, of which 16 were
+# false positives — a 70% rate, against a published tool-abandonment threshold of
+# 20-30%. Every one was an UPPERCASE *_KEY constant whose VALUE was an identifier,
+# a dunder or an env-var name. After the fix: 8 findings, all 7 true positives
+# preserved.
+# --------------------------------------------------------------------------
+@pytest.mark.parametrize("name,src", [
+    ("configfile", "CONFIGFILE_KEY = 'pydantic-mypy'"),
+    ("metadata",   "METADATA_KEY = 'pydantic-mypy-metadata'"),
+    ("root",       "ROOT_KEY = '__root__'"),
+    ("validator",  "VALIDATOR_CONFIG_KEY = '__validator_config__'"),
+    ("envvar",     'ENV_VAR_KEY = "TOX_PARALLEL_ENV"'),
+    ("markup",     'MARKUP_MODE_KEY = "TYPER_RICH_MARKUP_MODE"'),
+    ("schema",     'meta_schema_key = "meta schema id"'),
+    ("derivation", 'key_derivation = "hmac"'),
+])
+def test_mapping_keys_are_not_reported_as_key_material(tmp_path, name, src):
+    """Real lines from real repositories. A dict key is not a secret."""
+    _write(tmp_path, f"{name}.py", src)
+    assert _kp(tmp_path) == [], f"{name}: mapping key reported as key material"
+
+
+@pytest.mark.parametrize("name,src", [
+    ("secret", 'SECRET_KEY = "dev"'),
+    ("test",   'TEST_KEY = "foo"'),
+    ("passwd", 'PASSWORD = "pipe-secret"'),
+])
+def test_real_key_shaped_literals_are_still_reported(tmp_path, name, src):
+    """🔴 THE CONSTRAINT ON THE FIX. `SECRET_KEY = "dev"` is a TRUE positive whose
+    value is also a plain identifier — so the suppression cannot key on value shape
+    alone. It tests shapes a secret never takes (dunder, env-var name) and asks what
+    is being KEYED, never whether the word "key" appears."""
+    _write(tmp_path, f"{name}.py", src)
+    assert len(_kp(tmp_path)) == 1, f"{name}: real key material suppressed"
+
+
+# --------------------------------------------------------------------------
+# CBOM — the codebase answering the question
+# --------------------------------------------------------------------------
+def test_usedforsecurity_false_downgrades_to_review(tmp_path):
+    """`usedforsecurity=False` is Python's own marker for a non-security hash.
+    Real `hashlib.md5(x, usedforsecurity=False)` calls were reported as BROKEN —
+    a maintainer having already made and documented this judgement.
+
+    ⚠️ Downgraded to REVIEW, not dropped: the flag is an assertion by the author,
+    and an assertion is what this package refuses to take on trust."""
+    _write(tmp_path, "h.py", "import hashlib\nhashlib.md5(b'x', usedforsecurity=False)\n")
+    comps = cbom.build_cbom(tmp_path).components
+    md5 = [c for c in comps if _get(c, "primitive") == "MD5"]
+    assert md5, "the primitive must still be inventoried"
+    assert {_get(c, "quantum") for c in md5} == {"REVIEW"}
+
+
+def test_plain_md5_is_still_broken(tmp_path):
+    _write(tmp_path, "h.py", "import hashlib\nhashlib.md5(b'x')\n")
+    md5 = [c for c in cbom.build_cbom(tmp_path).components if _get(c, "primitive") == "MD5"]
+    assert md5 and {_get(c, "quantum") for c in md5} == {"BROKEN"}
+
+
+def test_changing_a_status_does_not_inflate_the_component_count(tmp_path):
+    """🔴 A REGRESSION FOR AN INSTRUMENT DEFECT, NOT A PRODUCT ONE.
+
+    Dedup keys on (file, line, primitive, STATUS). The moment the call path could
+    emit a different status for a site the attribute path also reports, the two
+    stopped collapsing and one finding became two — 90 components became 94 with
+    no new code scanned. **Changing a value that is part of a dedup key silently
+    disables the dedup.** Nothing errors; the count just inflates.
+    """
+    _write(tmp_path, "h.py",
+           "import hashlib, hmac\n"
+           "hmac.new(b'k', b'm', hashlib.md5)\n"
+           "hashlib.md5(b'x', usedforsecurity=False)\n")
+    comps = cbom.build_cbom(tmp_path).components
+    sites = [(_get(c, "file"), _get(c, "line"), _get(c, "primitive")) for c in comps]
+    assert len(sites) == len(set(sites)), f"duplicate site reported: {sites}"

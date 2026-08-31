@@ -52,13 +52,13 @@ No dependencies. Python 3.10+.
 ```bash
 git clone https://github.com/EntroLabs/EntroVouch
 cd EntroVouch
-python -m pytest -q      # 308 tests, no installs, exit 0
+python -m pytest -q      # 322 tests, no installs, exit 0
 ```
 
-**308 is what a clean clone runs with nothing installed, and it exits 0.** **23** further tests need
+**322 is what a clean clone runs with nothing installed, and it exits 0.** **23** further tests need
 optional extras — `hypothesis` for the property suite, `jsonschema` for the CycloneDX and SARIF
 schema-conformance suites — and **skip** without them rather than failing or aborting collection.
-`pip install -e .[test]`, then re-run for **331**. Both counts are asserted by a test, not maintained
+`pip install -e .[test]`, then re-run for **345**. Both counts are asserted by a test, not maintained
 by hand.
 
 The extras are optional on purpose: putting a `pip install` between a sceptical reader and reproducing
@@ -246,17 +246,34 @@ structlog, loguru, tenacity, faker, jsonschema, anyio, more-itertools, python-do
 2026-08-30, and every finding was classified against one question: **can the flagged construct
 actually reach the network?**
 
-| | |
-|---|---|
-| Findings produced | **430** across 20 repositories |
-| False positives, first run | **32 of 257** judged findings — **12.5%** |
-| After the fix below | **0 of 257** — and the finding count did not drop |
+**All three tools, not one.** The first pass measured only the egress auditor; the other two were
+measured afterwards and one of them was far worse.
 
-**Every false positive was one defect class**: a *pure submodule* of a network-capable package.
-`from requests.structures import CaseInsensitiveDict` tells you `requests` is a dependency; that
-module is a dict subclass with no network code in it, and reporting it as a network import claims a
-socket may open at a line where none can. Those are now reported as `network-dependency` — the
-evidence survives, the false claim does not.
+| Tool | Findings | False positives, first run | After the fix |
+|---|---|---|---|
+| `no_egress_auditor` | 430 | **32 of 257 judged — 12.5%** | **0** — finding count unchanged |
+| `key_provenance` | 23 | 🔴 **16 of 23 — 70%** | **1 arguable of 8** — all 7 true positives kept |
+| `cbom` | 90 | 0 against its stated scope | 4 downgraded where the author declared non-security |
+
+**In each tool the false positives were a single defect class, and in each case the fix was
+structural rather than a longer exception list.**
+
+- **Egress:** a *pure submodule* of a network-capable package. `from requests.structures import
+  CaseInsensitiveDict` tells you `requests` is a dependency; that module is a dict subclass with no
+  network code in it. Now reported as `network-dependency` — the evidence survives, the false claim
+  does not.
+- 🔴 **Key provenance, the worst of the three at 70%:** an uppercase `*_KEY` constant whose *value* is
+  an identifier, a dunder or an env-var name — `CONFIGFILE_KEY = 'pydantic-mypy'`, `ROOT_KEY =
+  '__root__'`, `ENV_VAR_KEY = "TOX_PARALLEL_ENV"`. **Those are mapping keys, not key material.** The
+  rule that produced them judged only the *name*, and only its *suffix*. It never looked at the value.
+- **CBOM:** no false positives under its stated scope — it inventories primitives a codebase
+  *references* — but it ignored `usedforsecurity=False`, **which is the codebase answering the
+  question.** Those are now `REVIEW` rather than `BROKEN`: downgraded, not dropped, because the flag
+  is the author's assertion and an assertion is what this package declines to take on trust.
+
+⚠️ **41 of the 90 CBOM components are `random`.** That is accurate and, in a fake-data generator or a
+test suite, rarely actionable. **Accuracy and actionability are different properties and this page
+will not conflate them.**
 
 ### And how often does it MISS?
 
