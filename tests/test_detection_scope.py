@@ -403,3 +403,65 @@ def test_changing_a_status_does_not_inflate_the_component_count(tmp_path):
     comps = cbom.build_cbom(tmp_path).components
     sites = [(_get(c, "file"), _get(c, "line"), _get(c, "primitive")) for c in comps]
     assert len(sites) == len(set(sites)), f"duplicate site reported: {sites}"
+
+
+# --------------------------------------------------------------------------
+# pyca/cryptography class constructors — found by a coverage comparison
+# --------------------------------------------------------------------------
+@pytest.mark.parametrize("expr,primitive", [
+    ("hashes.MD5()",             "MD5"),
+    ("hashes.SHA1()",            "SHA-1"),
+    ("hashes.SHA256()",          "SHA-256"),
+    ("algorithms.AES(b'0'*32)",  "AES"),
+    ("algorithms.TripleDES(b'0'*24)", "DES/3DES"),
+])
+def test_pyca_class_constructors_are_inventoried(tmp_path, expr, primitive):
+    """`hashlib.md5()` was caught and `hashes.MD5()` was not — a BROKEN-tier
+    finding invisible in the most widely used cryptographic library in Python.
+
+    Found by comparing coverage against PQCA's CBOMkit, whose Python support is
+    ONE library at 100% of its API. Breadth and depth are different axes, and we
+    had breadth with a hole in the middle of the one library everyone uses."""
+    _write(tmp_path, "c.py",
+           f"from cryptography.hazmat.primitives import hashes\n"
+           f"from cryptography.hazmat.primitives.ciphers import algorithms\n"
+           f"x = {expr}\n")
+    prims = {_get(c, "primitive") for c in cbom.build_cbom(tmp_path).components}
+    assert primitive in prims, f"{expr} not inventoried; got {sorted(prims)}"
+
+
+def test_pyca_detection_does_not_fire_without_the_import(tmp_path):
+    """The precision half. `hashes`, `algorithms`, `AES` and `MD5` are ordinary
+    names; firing on them in unrelated code is the trade this package refuses."""
+    _write(tmp_path, "c.py", "class hashes:\n    MD5 = lambda: None\nx = hashes.MD5()\n")
+    prims = {_get(c, "primitive") for c in cbom.build_cbom(tmp_path).components}
+    assert "MD5" not in prims
+
+
+def test_no_source_file_contains_a_stray_control_byte():
+    r"""🔴 A REGRESSION FOR AN INSTRUMENT DEFECT THAT COST A WHOLE FEATURE.
+
+    The guard enabling the detection above was written through a chain of string
+    replacements, and a `\b` word-boundary escape was evaluated into byte 0x08.
+    The regex became "<BS>from\s+cryptography": it compiled, it ran, it matched
+    nothing, and the branch it guarded was dead while testing correct in
+    isolation.
+
+    ⭐ A GUARD THAT IS ALWAYS FALSE DISABLES WHAT IT GUARDS AND RAISES NOTHING.
+    Only instrumenting the branch found it. This asserts the byte-level cause
+    cannot recur unnoticed anywhere in the package.
+    """
+    root = Path(__file__).resolve().parents[1]
+    offenders = []
+    for p in root.rglob("*"):
+        if p.is_dir() or ".git" in p.parts or "__pycache__" in p.parts:
+            continue
+        if p.suffix not in {".py", ".md", ".toml"}:
+            continue
+        try:
+            text = p.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if any(ord(ch) < 32 and ch not in "\n\r\t" for ch in text):
+            offenders.append(p.relative_to(root).as_posix())
+    assert not offenders, f"stray control bytes in: {offenders}"

@@ -102,6 +102,36 @@ LIB_MODULE = {
     "argon2": ("Argon2", "kdf", "REVIEW"),
     "passlib": ("passlib (algorithm-dependent)", "library", "REVIEW"),
 }
+# pyca/cryptography CLASS constructors — `hashes.MD5()`, `algorithms.AES(key)`.
+#
+# 🔴 ADDED 2026-08-31 AFTER A COVERAGE COMPARISON THAT FOUND A REAL HOLE.
+# The hash table above is keyed on `hashlib.<attr>`, so `hashlib.md5()` was caught
+# and **`hashes.MD5()` from pyca/cryptography was not** — a BROKEN-tier finding,
+# invisible, in the most widely used cryptographic library in Python. Measured on
+# a pyca-heavy file: MD5, SHA-1, SHA-256 and AES all missed, while the same file's
+# RSA, EC, Ed25519, X25519, 3DES, ChaCha20, PBKDF2 and scrypt were found.
+#
+# ⭐ The gap was found by comparing coverage against PQCA's CBOMkit, whose Python
+# support is ONE library — pyca/cryptography — at 100% of its API. Breadth and
+# depth are different axes, and we had breadth with a hole in the middle of the
+# one library everybody actually uses.
+PYCA_HASHES = {
+    "MD5": ("MD5", "hash", "BROKEN"), "SHA1": ("SHA-1", "hash", "BROKEN"),
+    "SHA224": ("SHA-224", "hash", "GROVER-REDUCED"), "SHA256": ("SHA-256", "hash", "GROVER-REDUCED"),
+    "SHA384": ("SHA-384", "hash", "SAFE"), "SHA512": ("SHA-512", "hash", "SAFE"),
+    "SHA3_256": ("SHA3-256", "hash", "GROVER-REDUCED"), "SHA3_512": ("SHA3-512", "hash", "SAFE"),
+    "BLAKE2b": ("BLAKE2b", "hash", "SAFE"), "BLAKE2s": ("BLAKE2s", "hash", "GROVER-REDUCED"),
+    "SM3": ("SM3", "hash", "REVIEW"),
+}
+PYCA_CIPHERS = {
+    "AES": ("AES", "cipher", "GROVER-REDUCED"), "AES128": ("AES-128", "cipher", "GROVER-REDUCED"),
+    "AES256": ("AES-256", "cipher", "GROVER-REDUCED"), "Camellia": ("Camellia", "cipher", "GROVER-REDUCED"),
+    "ChaCha20": ("ChaCha20", "cipher", "GROVER-REDUCED"),
+    "TripleDES": ("DES/3DES", "cipher", "BROKEN"), "ARC4": ("RC4", "cipher", "BROKEN"),
+    "Blowfish": ("Blowfish", "cipher", "BROKEN"), "CAST5": ("CAST5", "cipher", "REVIEW"),
+    "IDEA": ("IDEA", "cipher", "REVIEW"), "SEED": ("SEED", "cipher", "REVIEW"),
+}
+
 # KDF / password-hashing constructors reached through hashlib.
 KDF_FUNCS = {
     "pbkdf2_hmac": ("PBKDF2-HMAC", "kdf", "REVIEW"),
@@ -246,6 +276,21 @@ def _check_python_ast(src: str, path: Path, rel: str) -> list[CryptoUse]:
     except (SyntaxError, ValueError):
         return out
 
+    # Does this FILE use pyca/cryptography at all? The class-constructor detection
+    # below is gated on it, so `hashes.MD5()` in an unrelated module is not claimed.
+    #
+    # 🔴 THIS LINE WAS ONE INVISIBLE BYTE FROM SILENTLY DISABLING THE BRANCH
+    # BELOW, AND IT DID. Written through a chain of string replacements, a backslash-b
+    # word-boundary escape was evaluated into byte 0x08, leaving the regex as
+    # "<BS>from\s+cryptography". It compiled, it ran, it matched nothing, and
+    # `_pyca` was permanently False.
+    #
+    # ⭐ A GUARD THAT IS ALWAYS FALSE DISABLES WHAT IT GUARDS AND RAISES NOTHING.
+    # The detection below tested correct in isolation and was dead in production;
+    # only instrumenting the branch found it. Plain substring tests are used here
+    # deliberately - they cannot be corrupted by an escape.
+    _pyca = ("from cryptography" in src) or ("import cryptography" in src)
+
     aliases: dict[str, str] = {}  # local alias -> real module (import hashlib as hl)
     for node in ast.walk(tree):
         # imports: stdlib crypto modules + classical libraries
@@ -317,6 +362,16 @@ def _check_python_ast(src: str, path: Path, rel: str) -> list[CryptoUse]:
             elif real == "secrets":
                 p, c, q = STDLIB_MODULE["secrets"]
                 out.append(CryptoUse(rel, node.lineno, p, c, q, f"secrets.{attr}(...) — CSPRNG"))
+            # pyca class constructors. ⚠️ Gated on the FILE importing `cryptography`,
+            # because `hashes`, `algorithms`, `AES` and `MD5` are ordinary names and
+            # firing on them everywhere would be the false-positive trade this
+            # package keeps refusing.
+            elif _pyca and attr in PYCA_HASHES and _attr_root(node.func) in ("hashes", "_hashes"):
+                p_, c_, q_ = PYCA_HASHES[attr]
+                out.append(CryptoUse(rel, node.lineno, p_, c_, q_, f"hashes.{attr}()  [pyca/cryptography]"))
+            elif _pyca and attr in PYCA_CIPHERS and _attr_root(node.func) in ("algorithms", "_algorithms"):
+                p_, c_, q_ = PYCA_CIPHERS[attr]
+                out.append(CryptoUse(rel, node.lineno, p_, c_, q_, f"algorithms.{attr}()  [pyca/cryptography]"))
             elif real == "os" and attr == "urandom":
                 # os.urandom carries the same guarantee as secrets; recognising
                 # one and not the other was a recall asymmetry inside a category.

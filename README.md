@@ -52,13 +52,13 @@ No dependencies. Python 3.10+.
 ```bash
 git clone https://github.com/EntroLabs/EntroVouch
 cd EntroVouch
-python -m pytest -q      # 322 tests, no installs, exit 0
+python -m pytest -q      # 329 tests, no installs, exit 0
 ```
 
-**322 is what a clean clone runs with nothing installed, and it exits 0.** **23** further tests need
+**329 is what a clean clone runs with nothing installed, and it exits 0.** **23** further tests need
 optional extras — `hypothesis` for the property suite, `jsonschema` for the CycloneDX and SARIF
 schema-conformance suites — and **skip** without them rather than failing or aborting collection.
-`pip install -e .[test]`, then re-run for **345**. Both counts are asserted by a test, not maintained
+`pip install -e .[test]`, then re-run for **352**. Both counts are asserted by a test, not maintained
 by hand.
 
 The extras are optional on purpose: putting a `pip install` between a sceptical reader and reproducing
@@ -316,6 +316,35 @@ you can redo both rather than take either on trust.
 - **A clean audit is a statement about a tree at a commit, not a guarantee about a running system.** Time T says nothing about T+1.
 - **A signature proves origin and integrity, not correctness.** With a pinned root it proves the report came from that publisher and was not altered. It says nothing about whether the tool's verdict is *right* — and an `UNSIGNED` report proves neither origin nor authorship, only that its bytes match its own digest.
 - **`REVIEW` means review.** It is not a pass.
+
+### What kind of assurance this is
+
+There is a hundred-year-old profession that already has words for this, and using
+theirs saves you working out ours.
+
+Under ISAE 3000 and SSAE 18 an auditor gives one of two levels. **Reasonable
+assurance** is a positive opinion: *in our opinion, X is the case.* **Limited
+assurance** is a negative one: *nothing came to our attention to suggest otherwise.*
+The second is not a weaker version of the first — it is a different, narrower
+statement, and it is stated as such precisely so a reader does not mistake it for
+the other.
+
+**Everything this tool produces is limited assurance.** `CLEAN` means *nothing came
+to our attention*, not *there is nothing there*. `REVIEW` means a human still has to
+look. The analyser underapproximates, so a positive opinion is not available to it
+at any level of effort.
+
+⚠️ **This is a translation, not a credential.** EntroVerse is not a licensed audit
+firm, this is not an engagement under ISAE 3000 or any other standard, and nothing
+here is performed by a party independent of the tool's author unless you have
+separately engaged one. **The vocabulary is borrowed so the shape is recognisable
+to whoever hands your report to their auditors** — that is the whole of the claim.
+
+⭐ Worth saying plainly, because it is the honest version of the sales pitch: the
+part of an audit you cannot download is **independence**. The tool, the module
+lists and the signing capability here are free, complete and identical for
+everyone. Running it on your own code is not something anyone else can rely on, and
+no amount of software fixes that.
 
 ⚠️ **A crypto detector scanning its own source flags its own pattern table.** Running `cbom` on this
 repository reports `BROKEN-CRYPTO` because the file containing the string `DES` *is the file that
