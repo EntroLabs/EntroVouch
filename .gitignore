@@ -1,0 +1,28 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+*.egg-info/
+.venv/
+
+# Internal estate documents — must never reach the public repo.
+# ENTROVOUCH is single-branch by design: there is no internal branch to hide
+# them on, so they are excluded here instead. This makes the separation
+# structural rather than a thing someone has to remember at commit time.
+Project_Log.md
+STATUS.md
+NEXT.md
+
+# SIGNING KEY MATERIAL — never, under any circumstance, in this repository.
+# The keyfile holds the master seed for the Merkle signing identity. Anyone
+# holding it can forge every report this publisher will ever issue, and the
+# identity cannot be un-published once a reader has pinned its root.
+# There was no pattern here until 2026-08-20: nothing prevented a keyfile being
+# committed to a PUBLIC repo. Held by nobody having done it yet, which is not a
+# control.
+*.key
+*.key.json
+*key.json
+*keyfile*
+entrovouch_identity*
+signing_identity*

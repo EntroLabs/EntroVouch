@@ -1,0 +1,19 @@
+# Vendored reference data is pinned BY HASH. Git must not touch a byte of it.
+#
+# 🔴 Found 2026-08-23 by cloning this repo the way a stranger would: on Windows,
+# git converted these files LF -> CRLF on checkout, which changed their SHA256,
+# which broke `test_schema_files_are_the_ones_we_pinned`. The suite passed in the
+# author's working directory and FAILED in a fresh clone -- the exact
+# self-consistency-is-not-conformance failure this package exists to talk about,
+# in this package.
+#
+# `-text` disables all end-of-line conversion. Do not remove it: the hash pin is
+# the only thing standing between "we validate against the official schema" and
+# "we validate against a schema we might have altered".
+tests/schemas/** -text
+tests/vectors/** -text
+
+# Source stays normalised so the repo is sane to work in on any platform.
+*.py text eol=lf
+*.md text eol=lf
+*.toml text eol=lf

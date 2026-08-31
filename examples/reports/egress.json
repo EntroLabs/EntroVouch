@@ -1,0 +1,32 @@
+{
+  "tool": "ENTROVOUCH no-egress auditor",
+  "tool_version": "1.0.0",
+  "target": "entrovouch/examples/sample_service",
+  "scanned_at_utc": "2026-08-30T22:17:46.107841+00:00",
+  "files_scanned": 3,
+  "verdict": "FINDINGS",
+  "findings": [
+    {
+      "file": "collector.py",
+      "line": 2,
+      "kind": "network-import",
+      "detail": "import urllib.request"
+    }
+  ],
+  "scope_statement": "Static analysis of Python, TypeScript and HTML/JS. Catches the realistic/accidental egress class plus common deliberate patterns (network-capable imports, git remote subcommands, shell=True and os.system/popen, child_process, dynamic import/exec/eval, external references, network binaries spawned via argv list, telemetry/APM and cloud SDK imports). Does NOT mathematically prove zero egress in a Turing-complete language. Known blind spots, stated rather than implied: detection is BLOCKLIST-BASED, so it is complete only against names it knows -- a renamed, vendored or dynamically-constructed module or argv entry is invisible, and a blocklist can never be complete by construction. Non-literal arguments (variables, f-strings, lists built at runtime) are not resolved. This report is therefore DETECTION-grade evidence and does not support an unqualified claim of absence.",
+  "subject": [
+    {
+      "name": "entrovouch/examples/sample_service",
+      "digest": {
+        "sha3-256": "3855a3f2fd37a4eff5b724a72acd0f541bfd08764a92e695077f9589c6dd520a"
+      }
+    }
+  ],
+  "subject_digest": "3855a3f2fd37a4eff5b724a72acd0f541bfd08764a92e695077f9589c6dd520a",
+  "findings_digest": "ab550ec3a55c490ba2c95e129bb64fe1b37b201e52dd85a12602af329943f513",
+  "content_hash": "770a2ab75e3b2c18f026ad563f367567b7419856a37c06c9fef669c9f304f397",
+  "integrity_tag": "",
+  "signature_algorithm": "UNSIGNED - content hash only, origin NOT attested",
+  "signature": null,
+  "public_root": ""
+}

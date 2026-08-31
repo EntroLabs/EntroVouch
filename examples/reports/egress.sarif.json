@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "ENTROVOUCH no-egress auditor",
+          "version": "1.0.0",
+          "informationUri": "https://github.com/EntroLabs/entrovouch",
+          "rules": [
+            {
+              "id": "network-import",
+              "name": "NetworkCapableImport",
+              "shortDescription": {
+                "text": "A network-capable module is imported"
+              },
+              "fullDescription": {
+                "text": "The file imports a module able to open a network connection (HTTP client, socket, mail/FTP, gRPC, websocket) or a telemetry/APM/cloud SDK. Importing is not proof of transmission, but it is proof that the capability is present in the shipped code, which is the claim a 'no telemetry' statement is about."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "supply-chain",
+                  "egress"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "network-import",
+          "level": "warning",
+          "message": {
+            "text": "import urllib.request"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "collector.py"
+                },
+                "region": {
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "entrovouchFindingV1": "6dca38b58c67c0efd55019920f0e303e"
+          }
+        }
+      ],
+      "properties": {
+        "verdict": "FINDINGS",
+        "filesScanned": 3,
+        "scopeStatement": "Static analysis of Python, TypeScript and HTML/JS. Catches the realistic/accidental egress class plus common deliberate patterns (network-capable imports, git remote subcommands, shell=True and os.system/popen, child_process, dynamic import/exec/eval, external references, network binaries spawned via argv list, telemetry/APM and cloud SDK imports). Does NOT mathematically prove zero egress in a Turing-complete language. Known blind spots, stated rather than implied: detection is BLOCKLIST-BASED, so it is complete only against names it knows -- a renamed, vendored or dynamically-constructed module or argv entry is invisible, and a blocklist can never be complete by construction. Non-literal arguments (variables, f-strings, lists built at runtime) are not resolved. This report is therefore DETECTION-grade evidence and does not support an unqualified claim of absence.",
+        "subjectDigest": "3855a3f2fd37a4eff5b724a72acd0f541bfd08764a92e695077f9589c6dd520a",
+        "findingsDigest": "ab550ec3a55c490ba2c95e129bb64fe1b37b201e52dd85a12602af329943f513"
+      }
+    }
+  ]
+}

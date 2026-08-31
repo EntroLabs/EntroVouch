@@ -1,0 +1,416 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-08-30T22:17:46.350450+00:00",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "ENTROVOUCH CBOM generator",
+          "version": "1.0.0"
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "name": "sample_service",
+      "bom-ref": "subject",
+      "hashes": [
+        {
+          "alg": "SHA3-256",
+          "content": "3855a3f2fd37a4eff5b724a72acd0f541bfd08764a92e695077f9589c6dd520a"
+        }
+      ]
+    },
+    "properties": [
+      {
+        "name": "entrovouch:verdict",
+        "value": "BROKEN-CRYPTO"
+      },
+      {
+        "name": "entrovouch:filesScanned",
+        "value": "3"
+      },
+      {
+        "name": "entrovouch:scopeStatement",
+        "value": "Static analysis names the primitives a codebase REFERENCES; it cannot prove a referenced primitive is reached at runtime, cannot always infer a dynamically-computed key SIZE, and cannot see crypto behind full obfuscation. High-recall inventory + PQ-status verdict (the CBOM the migration standards ask for), NOT a proof of cryptographic soundness."
+      },
+      {
+        "name": "entrovouch:findingsDigest",
+        "value": "742552a9cbdf95f238cf7018371323b9cf66baf896c26f2067324af091960299"
+      },
+      {
+        "name": "entrovouch:subjectDigest",
+        "value": "3855a3f2fd37a4eff5b724a72acd0f541bfd08764a92e695077f9589c6dd520a"
+      },
+      {
+        "name": "entrovouch:minimumElementsConformance",
+        "value": "NOT CLAIMED - CISA/NIST minimum elements under EO 14412 are unpublished as of this build"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto/MD5/tokens.py#15",
+      "name": "MD5",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 15
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "BROKEN"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "compromised"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "hashlib.md5(...)"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto/random-MersenneTwister/tokens.py#9",
+      "name": "random-MersenneTwister",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "drbg",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 9
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "WEAK-RNG"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "deactivated"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "import random"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto/SHA-256/tokens.py#28",
+      "name": "SHA-256",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 1
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 28
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "GROVER-REDUCED"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "active"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "hashlib.sha256"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto/SHA-256/tokens.py#38",
+      "name": "SHA-256",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 1
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 38
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "GROVER-REDUCED"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "active"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "hashlib.sha256"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto/HMAC/tokens.py#8",
+      "name": "HMAC",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 3
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 8
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "SAFE"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "active"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "import hmac"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto/secrets-CSPRNG/tokens.py#10",
+      "name": "secrets-CSPRNG",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "drbg",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 3
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 10
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "SAFE"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "active"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "import secrets"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto/secrets-CSPRNG/tokens.py#24",
+      "name": "secrets-CSPRNG",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "drbg",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 3
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 24
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "SAFE"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "active"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "secrets.token_hex(...) \u2014 CSPRNG"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto/HMAC/tokens.py#28",
+      "name": "HMAC",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 3
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 28
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "SAFE"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "active"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "hmac.new(...)"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto/HMAC/tokens.py#38",
+      "name": "HMAC",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 3
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 38
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "SAFE"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "active"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "hmac.new(...)"
+        }
+      ]
+    }
+  ]
+}

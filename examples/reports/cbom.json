@@ -1,0 +1,105 @@
+{
+  "tool": "ENTROVOUCH CBOM generator",
+  "tool_version": "1.0.0",
+  "target": "sample_service",
+  "scanned_at_utc": "2026-08-30T22:17:46.350450+00:00",
+  "files_scanned": 3,
+  "verdict": "BROKEN-CRYPTO",
+  "summary": {
+    "BROKEN": 1,
+    "WEAK-RNG": 1,
+    "GROVER-REDUCED": 2,
+    "SAFE": 5
+  },
+  "components": [
+    {
+      "file": "tokens.py",
+      "line": 15,
+      "primitive": "MD5",
+      "category": "hash",
+      "quantum": "BROKEN",
+      "detail": "hashlib.md5(...)"
+    },
+    {
+      "file": "tokens.py",
+      "line": 9,
+      "primitive": "random-MersenneTwister",
+      "category": "rng",
+      "quantum": "WEAK-RNG",
+      "detail": "import random"
+    },
+    {
+      "file": "tokens.py",
+      "line": 28,
+      "primitive": "SHA-256",
+      "category": "hash",
+      "quantum": "GROVER-REDUCED",
+      "detail": "hashlib.sha256"
+    },
+    {
+      "file": "tokens.py",
+      "line": 38,
+      "primitive": "SHA-256",
+      "category": "hash",
+      "quantum": "GROVER-REDUCED",
+      "detail": "hashlib.sha256"
+    },
+    {
+      "file": "tokens.py",
+      "line": 8,
+      "primitive": "HMAC",
+      "category": "mac",
+      "quantum": "SAFE",
+      "detail": "import hmac"
+    },
+    {
+      "file": "tokens.py",
+      "line": 10,
+      "primitive": "secrets-CSPRNG",
+      "category": "rng",
+      "quantum": "SAFE",
+      "detail": "import secrets"
+    },
+    {
+      "file": "tokens.py",
+      "line": 24,
+      "primitive": "secrets-CSPRNG",
+      "category": "rng",
+      "quantum": "SAFE",
+      "detail": "secrets.token_hex(...) \u2014 CSPRNG"
+    },
+    {
+      "file": "tokens.py",
+      "line": 28,
+      "primitive": "HMAC",
+      "category": "mac",
+      "quantum": "SAFE",
+      "detail": "hmac.new(...)"
+    },
+    {
+      "file": "tokens.py",
+      "line": 38,
+      "primitive": "HMAC",
+      "category": "mac",
+      "quantum": "SAFE",
+      "detail": "hmac.new(...)"
+    }
+  ],
+  "scope_statement": "Static analysis names the primitives a codebase REFERENCES; it cannot prove a referenced primitive is reached at runtime, cannot always infer a dynamically-computed key SIZE, and cannot see crypto behind full obfuscation. High-recall inventory + PQ-status verdict (the CBOM the migration standards ask for), NOT a proof of cryptographic soundness.",
+  "subject": [
+    {
+      "name": "sample_service",
+      "digest": {
+        "sha3-256": "3855a3f2fd37a4eff5b724a72acd0f541bfd08764a92e695077f9589c6dd520a"
+      }
+    }
+  ],
+  "subject_digest": "3855a3f2fd37a4eff5b724a72acd0f541bfd08764a92e695077f9589c6dd520a",
+  "findings_digest": "742552a9cbdf95f238cf7018371323b9cf66baf896c26f2067324af091960299",
+  "content_hash": "af6d931b3303a0206979b370279c099b16231478bfe5c5e0ab686fff2cf3db89",
+  "integrity_tag": "",
+  "self_scan_suppressed": false,
+  "signature_algorithm": "UNSIGNED - content hash only, origin NOT attested",
+  "signature": null,
+  "public_root": ""
+}

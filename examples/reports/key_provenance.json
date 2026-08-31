@@ -1,0 +1,22 @@
+{
+  "target": "entrovouch/examples/sample_service",
+  "files_scanned": 3,
+  "findings": [
+    {
+      "file": "tokens.py",
+      "line": 34,
+      "kind": "literal-key",
+      "detail": "WEBHOOK_SIGNING_KEY is assigned a literal in source",
+      "verdict": "REVIEW"
+    },
+    {
+      "file": "tokens.py",
+      "line": 38,
+      "kind": "derived-from-constant",
+      "detail": "hmac.new() keyed by key is WEBHOOK_SIGNING_KEY, a module-level literal - reproducible by anyone holding the source; proves integrity, NOT origin",
+      "verdict": "REVIEW"
+    }
+  ],
+  "verdict": "REVIEW",
+  "scope_statement": "Detects key material that originates in the source tree rather than in secret storage: string/bytes literals assigned to key-shaped names, and MAC/KDF keys derived by hashing a literal, a module-level constant, or a function parameter (a key hashed from an argument is exactly as secret as the least secret value any call site passes, which source cannot show). Static and name-based, so it is neither complete nor authoritative: a key read from a file, an environment variable or a KMS is invisible to it (correctly), and a secret assigned to an unconventionally-named variable is missed. Every finding is REVIEW, never a verdict \u2014 whether publicly-derivable key material is a defect depends on who receives the artifact, which is not knowable from source."
+}

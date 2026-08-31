@@ -1,0 +1,72 @@
+# ENTROVOUCH — project metadata.
+#
+# WHY THIS EXISTS (added 2026-08-21)
+# ----------------------------------
+# A 2026-08-21 sweep measured the estate: of 67 Python projects, 58 had no pyproject.toml,
+# 62 no licence file and 30 no README. The pattern was named there and holds here too —
+# **the estate is strong on NARRATIVE and weak on DECLARATION**: every project carries a
+# rich log of *why*, and most carry no machine-readable statement of *what it needs to run*.
+# "It runs on my machine" was the entire specification, on a day when the machine turned out
+# to contribute an 81x difference in test runtime.
+#
+# It matters most HERE, because this is the one public repository and its whole product claim
+# is "do not trust the issuer — clone it and re-run it yourself". That claim needs a stated
+# Python version to be honest.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "entrovouch"
+version = "1.0.0"                 # keep in step with entrovouch/_version.py
+description = "No-egress and cryptographic-inventory auditors that sign their own findings."
+readme = "README.md"
+requires-python = ">=3.10"        # `X | Y` unions and match-free stdlib only
+license = { file = "LICENSE" }
+keywords = ["sbom", "cbom", "supply-chain", "audit", "sarif", "in-toto", "post-quantum"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Security",
+    "Programming Language :: Python :: 3",
+]
+
+# ⭐ EMPTY, AND THAT IS THE POINT — NOT AN OVERSIGHT.
+# This package imports nothing outside the standard library, which is the property its own
+# auditor is built to demonstrate. `test_typescript.py` and the stdlib-only check enforce it,
+# so this list going non-empty should break a test rather than pass quietly.
+dependencies = []
+
+[project.optional-dependencies]
+# TEST-ONLY, and every one of these is optional at runtime AND at test time.
+#
+# ⚠️ `hypothesis` is deliberately NOT required. The property-based suite calls
+# `pytest.importorskip`, so a reader who clones this repo and runs `pytest` gets the full
+# example-based suite with no installs. Putting a `pip install` between a sceptical reader and
+# reproducing our results would undercut the one claim this package makes.
+#
+# ⚠️ `jsonschema` is the same shape: `tests/test_cyclonedx_schema.py` calls
+# `pytest.importorskip`, so its absence skips that file rather than failing the suite.
+# It exists because a HAND-ROLLED schema checker could be wrong in the same direction
+# as the generator it checks — the same reasoning that made `serde_json` a test-only
+# dependency in ENTROAUTH_RS. A conformance harness must not contain a bespoke
+# component that can fail the way the thing under test fails.
+test = ["pytest>=7", "hypothesis>=6", "jsonschema>=4.18"]
+
+[project.urls]
+Homepage = "https://github.com/EntroLabs/EntroVouch"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+# ⛔ DO NOT ADD `addopts = "-q"` HERE. It was added on 2026-08-21 and immediately broke
+# `test_readme_claims`: the README guard shells out to `pytest --collect-only -q`, a
+# project-level `-q` escalates that to `-qq`, and `-qq` suppresses the summary line the
+# guard parses. The guard then reported "could not read a collected count."
+#
+# ⭐ The estate had ALREADY documented this exact trap, in `test_sweep_estate.py`:
+# *"Several projects already carry `-q` in their own pyproject addopts; adding ours
+# escalates to `-qq` ... The sweep then reads a perfectly green suite as UNCOLLECTABLE."*
+# Written down in one tool, walked into in another, one config file later. Leave verbosity
+# to the caller.
