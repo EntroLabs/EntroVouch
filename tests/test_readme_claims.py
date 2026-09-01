@@ -216,3 +216,85 @@ def test_readme_imports_resolve():
                 f"README documents `from {mod} import {name}` but it fails:\n"
                 f"{r.stderr[-800:]}"
             )
+
+
+def _headings(text: str) -> list[str]:
+    """Markdown headings OUTSIDE fenced code blocks.
+
+    The fences matter: this README's shell examples contain comment lines that
+    start with `#`, and counting those as headings would make the guard below
+    fail for reasons that have nothing to do with a missing section.
+    """
+    out, fenced = [], False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if not fenced and line.startswith("#"):
+            out.append(line.rstrip())
+    return out
+
+
+# The README's sections, pinned. Order is part of the assertion.
+EXPECTED_HEADINGS = [
+    "# ENTROVOUCH",
+    "## Why this exists",
+    "## Install",
+    "## Use",
+    "### Interoperable output",
+    "### Reproducing a report",
+    "## What it will not do",
+    "### How often is it wrong?",
+    "### And how often does it MISS?",
+    "### What kind of assurance this is",
+    "### Exit codes",
+    "## Signing",
+    "### The publisher's public root",
+    "## Independently issued audits",
+    "## License",
+]
+
+
+def test_readme_sections_are_all_present_and_in_order():
+    """🔴 THE GUARD THAT WAS MISSING WHEN TWO SECTIONS WERE DELETED BY ACCIDENT.
+
+    On 2026-08-31 a whole-file rewrite intended to strip decorative emoji also
+    removed **"And how often does it MISS?"** (the recall measurement, the
+    named blind spot and the entire *Honest limits* list) and **"What kind of
+    assurance this is"** (the ISAE 3000 / SSAE 18 limited-assurance statement).
+    Those are the two most load-bearing disclosures on the page.
+
+    🔴 **The full suite passed over the damaged file**, and so did the one guard
+    that existed: `test_readme_states_underapproximation` asserts the substring
+    `"underapproximat"` appears somewhere. The word occurs three times; the
+    deletion removed two and left one, so the guard was satisfied by a survivor
+    while the measurement it describes was gone.
+
+    ⭐ A SUBSTRING IS NOT A STRUCTURE. Checking that a word still appears cannot
+    tell you a section still exists. This asserts the structure instead.
+
+    If you are legitimately adding or renaming a section, update this list in
+    the same commit — that is the point, not an obstacle: it makes removing a
+    disclosure a deliberate, reviewable act rather than a side effect.
+    """
+    actual = _headings(README)
+    assert actual == EXPECTED_HEADINGS, (
+        "README section structure changed.\n"
+        f"  missing: {[h for h in EXPECTED_HEADINGS if h not in actual]}\n"
+        f"  added:   {[h for h in actual if h not in EXPECTED_HEADINGS]}\n"
+        "If this was intentional, update EXPECTED_HEADINGS in the same commit."
+    )
+
+
+def test_readme_keeps_the_disclosures_that_carry_the_measurements():
+    """The structure guard above proves a HEADING exists. This proves the
+    numbers under it survived, because a section can be emptied without losing
+    its title."""
+    for needle in (
+        "0/59",                    # tier A' held-out recall
+        "2/10",                    # tier C adversarial recall
+        "limited assurance",       # the assurance level, in the profession's words
+        "nothing came to our attention",
+        "REVIEW` means review",
+    ):
+        assert needle in README, f"README no longer states: {needle!r}"

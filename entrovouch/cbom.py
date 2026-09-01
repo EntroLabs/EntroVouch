@@ -123,6 +123,70 @@ PYCA_HASHES = {
     "BLAKE2b": ("BLAKE2b", "hash", "SAFE"), "BLAKE2s": ("BLAKE2s", "hash", "GROVER-REDUCED"),
     "SM3": ("SM3", "hash", "REVIEW"),
 }
+# PyCryptodome, resolved to the actual primitive.
+#
+# 🔴 THE SAME DEFECT THE PYCA FIX CLOSED, STILL LIVE IN THE OTHER LIBRARY
+# EVERYBODY USES. Measured 2026-08-31: `Crypto.Cipher.ARC4` (RC4) and
+# `Crypto.Cipher.DES3` both reported as "PyCryptodome (classical default
+# suite) / REVIEW" -- two BROKEN ciphers, indistinguishable in the output from
+# AES. Meanwhile pyca's `TripleDES` correctly returned DES/3DES / BROKEN.
+#
+# ⭐ A CBOM EXISTS TO SAY WHICH PRIMITIVES. "Classical default suite" is the
+# question restated, not an answer, and a migration plan cannot be built from
+# it. The CBOMkit comparison recorded this shape as "many libraries with a hole
+# in the middle of the one everybody uses"; that sentence stayed true with a
+# different library in the hole.
+#
+# In PyCryptodome the primitive IS the module -- `from Crypto.Cipher import
+# AES` -- so unlike pyca this resolves at the import and needs no call-site
+# guard. The library-level entry stays as a fallback for submodules not named
+# here, so recall never drops below what it was.
+PYCRYPTODOME_PRIMITIVES = {
+    # Crypto.Cipher
+    "AES": ("AES", "cipher", "GROVER-REDUCED"),
+    "ChaCha20": ("ChaCha20", "cipher", "GROVER-REDUCED"),
+    "ChaCha20_Poly1305": ("ChaCha20-Poly1305", "cipher", "GROVER-REDUCED"),
+    "Salsa20": ("Salsa20", "cipher", "GROVER-REDUCED"),
+    "DES": ("DES", "cipher", "BROKEN"),
+    "DES3": ("DES/3DES", "cipher", "BROKEN"),
+    "ARC4": ("RC4", "cipher", "BROKEN"),
+    "ARC2": ("RC2", "cipher", "BROKEN"),
+    "Blowfish": ("Blowfish", "cipher", "BROKEN"),
+    "CAST": ("CAST5", "cipher", "REVIEW"),
+    "PKCS1_v1_5": ("RSA PKCS#1 v1.5", "cipher", "VULNERABLE"),
+    "PKCS1_OAEP": ("RSA-OAEP", "cipher", "VULNERABLE"),
+    # Crypto.Hash
+    "MD5": ("MD5", "hash", "BROKEN"),
+    "MD4": ("MD4", "hash", "BROKEN"),
+    "MD2": ("MD2", "hash", "BROKEN"),
+    "SHA1": ("SHA-1", "hash", "BROKEN"),
+    "RIPEMD160": ("RIPEMD-160", "hash", "BROKEN"),
+    "SHA224": ("SHA-224", "hash", "GROVER-REDUCED"),
+    "SHA256": ("SHA-256", "hash", "GROVER-REDUCED"),
+    "SHA384": ("SHA-384", "hash", "SAFE"),
+    "SHA512": ("SHA-512", "hash", "SAFE"),
+    "SHA3_256": ("SHA3-256", "hash", "GROVER-REDUCED"),
+    "SHA3_512": ("SHA3-512", "hash", "SAFE"),
+    "BLAKE2b": ("BLAKE2b", "hash", "SAFE"),
+    "BLAKE2s": ("BLAKE2s", "hash", "GROVER-REDUCED"),
+    "HMAC": ("HMAC", "mac", "SAFE"),
+    "CMAC": ("CMAC", "mac", "SAFE"),
+    "Poly1305": ("Poly1305", "mac", "SAFE"),
+    # Crypto.PublicKey / Signature
+    "RSA": ("RSA", "signature/kem", "VULNERABLE"),
+    "DSA": ("DSA", "signature", "VULNERABLE"),
+    "ECC": ("ECDSA/EC", "signature", "VULNERABLE"),
+    "ElGamal": ("ElGamal", "signature/kem", "VULNERABLE"),
+    "pkcs1_15": ("RSASSA-PKCS1-v1_5", "signature", "VULNERABLE"),
+    "pss": ("RSASSA-PSS", "signature", "VULNERABLE"),
+    "DSS": ("DSA/ECDSA signature", "signature", "VULNERABLE"),
+    # Crypto.Protocol / Random
+    "KDF": ("PyCryptodome KDF (see call site)", "kdf", "REVIEW"),
+    "scrypt": ("scrypt", "kdf", "SAFE"),
+    "PBKDF2": ("PBKDF2", "kdf", "SAFE"),
+    "HKDF": ("HKDF", "kdf", "SAFE"),
+}
+
 PYCA_CIPHERS = {
     "AES": ("AES", "cipher", "GROVER-REDUCED"), "AES128": ("AES-128", "cipher", "GROVER-REDUCED"),
     "AES256": ("AES-256", "cipher", "GROVER-REDUCED"), "Camellia": ("Camellia", "cipher", "GROVER-REDUCED"),
@@ -298,20 +362,51 @@ def _check_python_ast(src: str, path: Path, rel: str) -> list[CryptoUse]:
             for a in node.names:
                 top = a.name.split(".")[0]
                 aliases[a.asname or a.name] = a.name
-                if top in STDLIB_MODULE:
+                # `import Crypto.Cipher.AES` — the primitive is the tail, same
+                # as the `from` forms below.
+                tail = a.name.split(".")[-1]
+                if top in ("Crypto", "Cryptodome") and tail in PYCRYPTODOME_PRIMITIVES:
+                    p_, c_, q_ = PYCRYPTODOME_PRIMITIVES[tail]
+                    out.append(CryptoUse(rel, node.lineno, p_, c_, q_,
+                                         f"import {a.name}  [PyCryptodome]"))
+                elif top in STDLIB_MODULE:
                     p, c, q = STDLIB_MODULE[top]
                     out.append(CryptoUse(rel, node.lineno, p, c, q, f"import {a.name}"))
                 elif top in LIB_MODULE:
                     p, c, q = LIB_MODULE[top]
                     out.append(CryptoUse(rel, node.lineno, p, c, q, f"import {a.name}"))
         elif isinstance(node, ast.ImportFrom):
-            top = (node.module or "").split(".")[0]
-            if top in STDLIB_MODULE:
+            mod = node.module or ""
+            top = mod.split(".")[0]
+            # PyCryptodome names the primitive in the module path, so resolve it
+            # here rather than emitting the library placeholder. Two forms:
+            #   from Crypto.Cipher import AES      -> the NAME is the primitive
+            #   from Crypto.Cipher.AES import new  -> the TAIL is the primitive
+            if top in ("Crypto", "Cryptodome"):
+                parts = mod.split(".")
+                named = [a.name for a in node.names]
+                hits = [n for n in named if n in PYCRYPTODOME_PRIMITIVES]
+                tail = parts[-1] if len(parts) >= 3 else None
+                if hits:
+                    for n in hits:
+                        p_, c_, q_ = PYCRYPTODOME_PRIMITIVES[n]
+                        out.append(CryptoUse(rel, node.lineno, p_, c_, q_,
+                                             f"from {mod} import {n}  [PyCryptodome]"))
+                elif tail in PYCRYPTODOME_PRIMITIVES:
+                    p_, c_, q_ = PYCRYPTODOME_PRIMITIVES[tail]
+                    out.append(CryptoUse(rel, node.lineno, p_, c_, q_,
+                                         f"from {mod} import ...  [PyCryptodome]"))
+                else:
+                    # Unrecognised submodule: fall back to the library entry so
+                    # recall never drops below what it was before this table.
+                    p, c, q = LIB_MODULE[top]
+                    out.append(CryptoUse(rel, node.lineno, p, c, q, f"from {mod} import ..."))
+            elif top in STDLIB_MODULE:
                 p, c, q = STDLIB_MODULE[top]
-                out.append(CryptoUse(rel, node.lineno, p, c, q, f"from {node.module} import ..."))
+                out.append(CryptoUse(rel, node.lineno, p, c, q, f"from {mod} import ..."))
             elif top in LIB_MODULE:
                 p, c, q = LIB_MODULE[top]
-                out.append(CryptoUse(rel, node.lineno, p, c, q, f"from {node.module} import ..."))
+                out.append(CryptoUse(rel, node.lineno, p, c, q, f"from {mod} import ..."))
 
         # hashlib.<algo>(...)  /  hashlib.new("algo")  /  hmac.new / secrets.* / random.*
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):

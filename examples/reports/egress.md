@@ -1,19 +1,19 @@
 # ENTROVOUCH No-Egress Audit — FINDINGS
 
 - **Target:** `entrovouch/examples/sample_service`
-- **Scanned:** 2026-08-30T22:17:46.107841+00:00
+- **Scanned:** 2026-09-01T02:04:38.426199+00:00
 - **Files scanned:** 3
 - **Findings:** 1
-- **Findings digest (reproduces):** `ab550ec3a55c490ba2c95e129bb64fe1…`
+- **Findings digest (reproduces):** `ce11b25dd054e837b029a279c10d8139…`
 - **Subject digest (binds the code):** `3855a3f2fd37a4eff5b724a72acd0f54…`
-- **Content hash (this issuance only, does NOT reproduce):** `770a2ab75e3b2c18f026ad563f367567…`
+- **Content hash (this issuance only, does NOT reproduce):** `472906103c37fa3b1a3bb222ac7c75c5…`
 - **Signature:** UNSIGNED - content hash only, origin NOT attested
 
 > ⚠️ **This report is NOT attested.** The content hash proves the body matches its own digest; it proves nothing about who produced it, because anyone can recompute it. Do not rely on this document as evidence of source.
 
 > **How to reproduce this report:** re-run the same tool version against the same tree and compare **`findings digest`** — it is bit-identical across runs, processes and machines. Do NOT compare the content hash: it covers the issuance timestamp and is *expected* to differ on every run. A different content hash with an identical findings digest is the same result, issued twice.
 
-> **Scope:** Static analysis of Python, TypeScript and HTML/JS. Catches the realistic/accidental egress class plus common deliberate patterns (network-capable imports, git remote subcommands, shell=True and os.system/popen, child_process, dynamic import/exec/eval, external references, network binaries spawned via argv list, telemetry/APM and cloud SDK imports). Does NOT mathematically prove zero egress in a Turing-complete language. Known blind spots, stated rather than implied: detection is BLOCKLIST-BASED, so it is complete only against names it knows -- a renamed, vendored or dynamically-constructed module or argv entry is invisible, and a blocklist can never be complete by construction. Non-literal arguments (variables, f-strings, lists built at runtime) are not resolved. This report is therefore DETECTION-grade evidence and does not support an unqualified claim of absence.
+> **Scope:** Static analysis of Python, TypeScript and HTML/JS. Catches the realistic/accidental egress class plus common deliberate patterns (network-capable imports, git remote subcommands, shell=True and os.system/popen, child_process, dynamic import/exec/eval, external references, network binaries spawned via argv list, telemetry/APM and cloud SDK imports). Does NOT mathematically prove zero egress in a Turing-complete language. Known blind spots, stated rather than implied: detection is BLOCKLIST-BASED, so it is complete only against names it knows -- a renamed, vendored or dynamically-constructed module or argv entry is invisible, and a blocklist can never be complete by construction. MEASURED 2026-08-31: against 59 network libraries chosen WITHOUT reference to the blocklist, recall is 0%, and it stayed 0% after the list was extended by 46 names -- so a PLAIN, unobfuscated `import X` of a library this tool does not name is invisible, exactly like an obfuscated one. Check FORBIDDEN_IMPORT_MODULES against your own dependencies before reading anything into a CLEAN verdict. Files that fail to parse are reported as `unparseable-source` findings and were NOT analysed. An import is NOT counted as a network import when the tree itself supplies a top-level module of that name, because that module shadows any installed package; every such name is listed in `shadowed_imports`, so a network client VENDORED into the tree root appears there rather than disappearing. Non-literal arguments (variables, f-strings, lists built at runtime) are not resolved. This report is therefore DETECTION-grade evidence and does not support an unqualified claim of absence.
 
 ## Findings
 

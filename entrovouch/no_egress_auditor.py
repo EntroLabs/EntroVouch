@@ -85,6 +85,52 @@ FORBIDDEN_IMPORT_MODULES = {
     # telemetry" claim is about.
     "huggingface_hub", "transformers", "datasets", "timm",
     "wandb", "mlflow", "comet_ml", "neptune", "clearml",
+    # ------------------------------------------------------------------
+    # 2026-08-31. Measured: 46 fixtures, each a PLAIN `import X` plus a real
+    # call, every library existing solely to talk over a network. 0 of 46
+    # caught; the tree reported CLEAN. Two of those fixtures POSTed a user's
+    # email to an external host and uploaded a customer database.
+    #
+    # These are not evasions and not obfuscation. They are the ordinary way
+    # this code gets written, and the previous list simply did not name them.
+    # The additions below are grouped by the category that was missing whole,
+    # which is the useful unit -- a list that has "HTTP clients" and no
+    # "SaaS SDKs" is not 90% complete, it is complete in one dimension and
+    # absent in another.
+    #
+    # SELECTION RULE, stated so it can be applied again: a name goes in only
+    # if opening a network connection is what the package is FOR. Ambiguous
+    # cases were deliberately left out -- `sqlalchemy` and `pyodbc` are
+    # routinely pointed at a local file or driver, and a false positive costs
+    # more than the finding is worth (same reasoning as NON_NETWORK_SUBMODULES
+    # and key_provenance._KEY_ARG).
+    # ------------------------------------------------------------------
+    # More HTTP clients and fetchers
+    "httplib2", "requests_oauthlib", "requests_html", "mechanize", "httpx_ws",
+    # Object storage / remote filesystems
+    "minio", "s3fs", "gcsfs", "adlfs", "smart_open", "dropbox",
+    # SaaS API clients -- egress is the entire purpose
+    "stripe", "twilio", "sendgrid", "slack_sdk", "slack", "github3", "github",
+    "gitlab", "jira", "atlassian", "notion_client", "praw", "tweepy",
+    "discord", "telegram",
+    # Async DB drivers and infrastructure clients. The sync equivalents
+    # (redis, pymongo, psycopg2) were already here; their async twins were not.
+    "asyncpg", "aiomysql", "motor", "aioredis", "etcd3", "consul", "hvac",
+    "kubernetes", "docker", "neo4j", "influxdb", "couchdb",
+    # Mail and identity
+    "aiosmtplib", "imapclient", "exchangelib", "O365", "msal",
+    # Brokers and task queues -- a broker URL is a network address
+    "aiokafka", "kombu", "celery", "nsq",
+    # Remote execution and file transfer
+    "fabric", "netmiko", "napalm", "pysftp", "scp", "ftputil", "tftpy",
+    # Directory, name and wire protocols
+    "ldap3", "ldaptor", "dns", "aiodns", "thrift", "zeep", "suds", "gql",
+    "sseclient", "socketio", "engineio", "autobahn", "pyngrok",
+    "scapy", "impacket", "opcua", "asyncua",
+    # Browser automation and crawlers: these fetch URLs by construction
+    "selenium", "playwright", "scrapy", "feedparser",
+    # Metrics exporters -- same category as statsd/datadog above
+    "prometheus_client",
 }
 
 # Submodules that are PURE even though their parent package is network-capable.
@@ -236,6 +282,27 @@ JS_NET_MODULES = {
     # Cloud SDKs (egress by definition)
     "aws-sdk", "@aws-sdk", "@google-cloud", "googleapis", "@azure",
     "firebase", "@firebase", "@supabase",
+    # ------------------------------------------------------------------
+    # 2026-08-31. The two blocklists were curated independently and drifted
+    # into COMPLEMENTARY gaps, which is worse than one shared gap because
+    # "TypeScript parity" reads as "the same checks on both languages".
+    # Measured: Python covered database drivers and this list did not; this
+    # list covered fetch polyfills and Python had no analogue. Neither was a
+    # superset of the other, so a reader could not predict from one what the
+    # other would catch. Reconciled here by category.
+    # ------------------------------------------------------------------
+    # Database and cache clients -- the category Python had and this lacked
+    "pg", "mysql", "mysql2", "mongodb", "mongoose", "redis", "ioredis",
+    "cassandra-driver", "@elastic/elasticsearch", "neo4j-driver",
+    # Mail, messaging and brokers
+    "nodemailer", "mqtt", "amqplib", "kafkajs", "nats", "bullmq",
+    # SaaS API clients
+    "stripe", "twilio", "@sendgrid", "@slack", "@octokit", "openai",
+    "@anthropic-ai", "algoliasearch",
+    # fetch polyfills -- these ARE the network call under another name
+    "isomorphic-fetch", "cross-fetch", "whatwg-fetch", "unfetch",
+    # Browser automation and crawlers
+    "puppeteer", "playwright", "selenium-webdriver", "cheerio-httpcli",
 }
 
 # child_process is the JS analogue of Python's subprocess: a shell string or an
@@ -424,8 +491,19 @@ class AuditReport:
         "implied: detection is BLOCKLIST-BASED, so it is complete only against "
         "names it knows -- a renamed, vendored or dynamically-constructed module "
         "or argv entry is invisible, and a blocklist can never be complete by "
-        "construction. Non-literal arguments (variables, f-strings, lists built "
-        "at runtime) are not resolved. This report is therefore DETECTION-grade "
+        "construction. MEASURED 2026-08-31: against 59 network libraries chosen "
+        "WITHOUT reference to the blocklist, recall is 0%, and it stayed 0% after "
+        "the list was extended by 46 names -- so a PLAIN, unobfuscated `import X` "
+        "of a library this tool does not name is invisible, exactly like an "
+        "obfuscated one. Check FORBIDDEN_IMPORT_MODULES against your own "
+        "dependencies before reading anything into a CLEAN verdict. Files that "
+        "fail to parse are reported as `unparseable-source` findings and were NOT "
+        "analysed. An import is NOT counted as a network import when the tree "
+        "itself supplies a top-level module of that name, because that module "
+        "shadows any installed package; every such name is listed in "
+        "`shadowed_imports`, so a network client VENDORED into the tree root "
+        "appears there rather than disappearing. Non-literal arguments (variables, f-strings, lists built at "
+        "runtime) are not resolved. This report is therefore DETECTION-grade "
         "evidence and does not support an unqualified claim of absence."
     )
     # WHAT WAS AUDITED, not merely what it was called. `target` is a free-text
@@ -436,6 +514,19 @@ class AuditReport:
     # one the supply-chain ecosystem already verifies, rather than a bespoke
     # field a consumer would have to be taught.
     subject: list = field(default_factory=list)
+    # Imports NOT counted as network imports because the tree supplies a
+    # top-level module of that name, which shadows any installed package.
+    #
+    # ⭐ RECORDED RATHER THAN SILENTLY DROPPED. Suppressing a finding without
+    # saying so is the shape of defect this package exists to complain about:
+    # the reader cannot audit a decision they cannot see. A project with its own
+    # `motor.py` gets the correct CLEAN verdict AND is told which names were
+    # resolved locally, so a vendored network client sitting at the tree root
+    # shows up here instead of vanishing.
+    #
+    # Part of the reproducible body: it is a property of the tree, not of this
+    # issuance, so two honest runs agree on it.
+    shadowed_imports: list = field(default_factory=list)
     # Order-independent digest over every file the audit actually read.
     subject_digest: str = ""
     # THE REPRODUCIBLE VALUE. Covers tool, version, subject, verdict and
@@ -461,36 +552,128 @@ class AuditReport:
 # ---------------------------------------------------------------------------
 # Python source checks (AST — a comment/docstring mentioning a module never fires)
 # ---------------------------------------------------------------------------
-def _check_python(path: Path, rel: str) -> list[Finding]:
+def _local_top_level_modules(target: Path) -> set[str]:
+    """Top-level module names the SCANNED TREE ITSELF provides.
+
+    🔴 THE PRECISION COST OF A LONGER BLOCKLIST, MEASURED 2026-08-31. Extending
+    the list added ordinary English words as module names -- `motor`, `docker`,
+    `github`, `dns`, `scp`, `slack`, `consul`, `fabric`. A project with its own
+    `motor.py` (a robotics codebase: near-certain) got `import motor` reported
+    as a network import. Four false positives in an eight-file fixture.
+
+    ⭐ THIS IS NOT LENIENCY, IT IS CORRECTNESS. A top-level `motor.py` in the
+    tree SHADOWS any installed distribution of that name for code importing it
+    -- that is Python's own resolution order, not a guess. Reporting
+    `network-import` there is factually wrong, not merely noisy.
+
+    ⚠️ THE COST, STATED RATHER THAN IMPLIED: this widens the vendoring blind
+    spot the scope statement already declares. A real network client vendored
+    into the tree root as `stripe.py` becomes invisible. That was ALREADY true
+    (`Known blind spots ... a renamed, vendored or dynamically-constructed
+    module ... is invisible`), and someone who can add files to the tree can
+    evade detection far more cheaply than this -- see tier C at 20%. The trade
+    buys correctness on honest codebases and loses nothing an adversary needed.
+
+    Deliberately ROOT-ONLY. `pkg/motor.py` does not shadow top-level `motor`
+    for code outside `pkg`, so only names at the scan root are treated as
+    provided by the tree.
+    """
+    names: set[str] = set()
+    try:
+        for child in target.iterdir():
+            if child.name in SKIP_DIRS:
+                continue
+            if child.is_file() and child.suffix in TEXT_EXTS:
+                names.add(child.stem)
+            elif child.is_dir() and (child / "__init__.py").exists():
+                names.add(child.name)
+    except OSError:
+        pass
+    return names
+
+
+def _check_python(path: Path, rel: str, local_modules: frozenset[str] = frozenset(),
+                  shadowed: set[str] | None = None) -> list[Finding]:
     out: list[Finding] = []
     try:
         src = path.read_text(encoding="utf-8", errors="replace")
         tree = ast.parse(src, filename=str(path))
-    except (SyntaxError, ValueError):
-        return out  # unparseable file — not our job to lint syntax
+    except (SyntaxError, ValueError) as exc:
+        # A FILE WE COULD NOT PARSE IS NOT A FILE WE FOUND NOTHING IN.
+        #
+        # This used to `return out` — silently. Measured 2026-08-31: a file
+        # containing `import requests` and a live `requests.post()` to an
+        # external endpoint, with one missing colon, produced
+        # "Files scanned: 1 - Findings: 0 - CLEAN" and exit 0. The parse
+        # failure was absorbed into a passing verdict.
+        #
+        # That is the CANT-RUN-vs-FAIL distinction this package already draws
+        # between exit 1 and exit 2 ("a pipeline that treats them alike will
+        # eventually report a broken scan as a passing one"), which was
+        # enforced for the RUN and never for the FILE. Same rule, one level
+        # down: report the gap in coverage as a finding so it reaches the
+        # reader, rather than letting it round to CLEAN.
+        #
+        # It is deliberately its own `kind`. This is not evidence of egress and
+        # must never be counted as such — it is evidence that a region of the
+        # tree was not analysed, which is a different and honest claim.
+        line = getattr(exc, "lineno", None) or 0
+        out.append(Finding(rel, line, "unparseable-source",
+                           f"could not parse this file, so it was NOT analysed "
+                           f"({type(exc).__name__}); absence of findings here is "
+                           f"not evidence of absence"))
+        return out
+
+    def _classify(name: str) -> str | None:
+        """_classify_module, but a module the TREE ITSELF provides wins.
+
+        A top-level `motor.py` in the scanned tree shadows any installed
+        distribution of that name, so calling it a network import is wrong.
+        See _local_top_level_modules for the trade this makes and its cost.
+        """
+        root = name.split(".")[0] if name else ""
+        # ⚠️ NOT when the importing file IS the shadowing module. A root-level
+        # `wandb.py` containing `import wandb` is a self-import, not a project
+        # providing `wandb` to its other files -- and treating it as shadowing
+        # suppressed 20 real detections in this suite's own fixtures, which name
+        # each fixture file after the module it imports. The conservative rule
+        # keeps the motor.py case (a DIFFERENT file imports the local module)
+        # and gives up the ambiguous one, because over-suppression here costs
+        # recall on the exact class this tool exists to catch.
+        importer_is_the_module = (
+            "/" not in rel and "\\" not in rel and rel[:-3] == root
+            and rel.endswith(".py")
+        )
+        if root and root in local_modules and not importer_is_the_module:
+            # Only record it if it WOULD have been reported otherwise --
+            # listing every local import would bury the interesting case.
+            if _classify_module(name) is not None and shadowed is not None:
+                shadowed.add(root)
+            return None
+        return _classify_module(name)
 
     for node in ast.walk(tree):
         # network-capable imports
         if isinstance(node, ast.Import):
             for a in node.names:
-                if _classify_module(a.name) == "network":
+                if _classify(a.name) == "network":
                     out.append(Finding(rel, node.lineno, "network-import", f"import {a.name}"))
-                elif _classify_module(a.name) == "dependency":
+                elif _classify(a.name) == "dependency":
                     out.append(Finding(rel, node.lineno, "network-dependency",
                                        f"import {a.name} — submodule of a network-capable package; "
                                        "evidence the dependency is present, NOT a network call here"))
-                elif _classify_module(a.name) == "inbound":
+                elif _classify(a.name) == "inbound":
                     out.append(Finding(rel, node.lineno, "inbound-listener",
                                        f"import {a.name} — binds a listening socket (INBOUND, not egress)"))
         elif isinstance(node, ast.ImportFrom):
             mod = node.module or ""
-            if _classify_module(mod) == "network":
+            if _classify(mod) == "network":
                 out.append(Finding(rel, node.lineno, "network-import", f"from {mod} import ..."))
-            elif _classify_module(mod) == "dependency":
+            elif _classify(mod) == "dependency":
                 out.append(Finding(rel, node.lineno, "network-dependency",
                                    f"from {mod} import ... — submodule of a network-capable package; "
                                    "evidence the dependency is present, NOT a network call here"))
-            elif _classify_module(mod) == "inbound":
+            elif _classify(mod) == "inbound":
                 out.append(Finding(rel, node.lineno, "inbound-listener",
                                    f"from {mod} import ... — binds a listening socket (INBOUND, not egress)"))
 
@@ -790,6 +973,10 @@ def audit(target: Path | str, covenant_text: str = _DEFAULT_COVENANT,
     findings: list[Finding] = []
     scanned = 0
     tree: list[tuple[str, str]] = []
+    # Names the tree provides itself shadow installed packages (Python's own
+    # resolution order), so they are not third-party network imports.
+    local_modules = frozenset(_local_top_level_modules(target))
+    shadowed: set[str] = set()
     for p in sorted(target.rglob("*")):
         if any(part in SKIP_DIRS for part in p.parts):
             continue
@@ -799,7 +986,7 @@ def audit(target: Path | str, covenant_text: str = _DEFAULT_COVENANT,
         if p.suffix in TEXT_EXTS:
             scanned += 1
             tree.append((rel, _file_digest(p)))
-            findings += _check_python(p, rel)
+            findings += _check_python(p, rel, local_modules, shadowed)
         elif p.suffix in TS_EXTS:
             scanned += 1
             tree.append((rel, _file_digest(p)))
@@ -808,6 +995,7 @@ def audit(target: Path | str, covenant_text: str = _DEFAULT_COVENANT,
             scanned += 1
             tree.append((rel, _file_digest(p)))
             findings += _check_markup(p, rel)
+    rep.shadowed_imports = sorted(shadowed)
     rep.files_scanned = scanned
     rep.findings = [asdict(f) for f in findings]
     rep.verdict = "FINDINGS" if findings else "CLEAN"
@@ -844,6 +1032,11 @@ def render_markdown(rep: AuditReport) -> str:
         f"- **Target:** `{rep.target}`",
         f"- **Scanned:** {rep.scanned_at_utc}",
         f"- **Files scanned:** {rep.files_scanned}",
+        *([f"- **Resolved locally, NOT counted as network imports:** "
+           f"`{'`, `'.join(rep.shadowed_imports)}` — this tree supplies a top-level "
+           f"module of each name, which shadows any installed package. Check these "
+           f"if the tree vendors dependencies."]
+          if rep.shadowed_imports else []),
         f"- **Findings:** {len(rep.findings)}",
         # ⚠️ ORDER AND LABELS ARE DELIBERATE. Until 2026-08-21 this block showed
         # `content_hash` ALONE -- the one digest that provably never reproduces,

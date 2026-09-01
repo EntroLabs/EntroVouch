@@ -16,7 +16,7 @@ Then compare **one value** per report:
 
 | Report | Value to compare | Expected |
 |---|---|---|
-| `reports/egress.json` | `findings_digest` | `ab550ec3a55c490ba2c95e129bb64fe1b37b201e52dd85a12602af329943f513` |
+| `reports/egress.json` | `findings_digest` | `ce11b25dd054e837b029a279c10d813923fa9128f8c551c1d33f1494fb35c59e` |
 | `reports/egress.json` | `subject_digest` | `3855a3f2fd37a4eff5b724a72acd0f541bfd08764a92e695077f9589c6dd520a` |
 | `reports/cbom.json` | `findings_digest` | `742552a9cbdf95f238cf7018371323b9cf66baf896c26f2067324af091960299` |
 
