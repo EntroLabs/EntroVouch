@@ -42,6 +42,8 @@ CASES = [
     ("cbom.json", "entrovouch.cbom", []),
     ("key_provenance.json", "entrovouch.key_provenance",
      ["--label", "entrovouch/examples/sample_service"]),
+    ("sbom.json", "entrovouch.sbom",
+     ["--label", "entrovouch/examples/sample_service"]),
 ]
 
 
@@ -120,7 +122,8 @@ def test_the_fixture_actually_produces_findings():
     # report type, and assuming otherwise made this test fail on a healthy report.
     expected = {"egress.json": "findings",
                 "cbom.json": "components",
-                "key_provenance.json": "findings"}
+                "key_provenance.json": "findings",
+                "sbom.json": "components"}
     for name, field in expected.items():
         rep = json.loads((REPORTS / name).read_text(encoding="utf-8"))
         items = rep.get(field) or []
@@ -147,7 +150,8 @@ def test_the_digests_printed_in_the_examples_readme_are_the_real_ones():
 
     real = set()
     for name, fields in (("egress.json", ("findings_digest", "subject_digest")),
-                         ("cbom.json", ("findings_digest",))):
+                         ("cbom.json", ("findings_digest",)),
+                         ("sbom.json", ("findings_digest",))):
         rep = json.loads((REPORTS / name).read_text(encoding="utf-8"))
         real.update(rep[f] for f in fields if f in rep)
 

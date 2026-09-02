@@ -16,9 +16,10 @@ Then compare **one value** per report:
 
 | Report | Value to compare | Expected |
 |---|---|---|
-| `reports/egress.json` | `findings_digest` | `ce11b25dd054e837b029a279c10d813923fa9128f8c551c1d33f1494fb35c59e` |
-| `reports/egress.json` | `subject_digest` | `3855a3f2fd37a4eff5b724a72acd0f541bfd08764a92e695077f9589c6dd520a` |
-| `reports/cbom.json` | `findings_digest` | `742552a9cbdf95f238cf7018371323b9cf66baf896c26f2067324af091960299` |
+| `reports/egress.json` | `findings_digest` | `505e9bdfecedb54a38919dc6f710a1269bddb26019f3385c155f3bee0df6bcf2` |
+| `reports/egress.json` | `subject_digest` | `9919e0bddd5cd02013d90fbb4ad235be4d091e9053cbae2bacff42af04a3c71d` |
+| `reports/cbom.json` | `findings_digest` | `c945e12617f146e65ff2ebb9bbfe96dd0f49234b419193ca507d18e1b66754b6` |
+| `reports/sbom.json` | `findings_digest` | `f955eb1e217a7f9df1c88e70ea642b8331a8de08f4f732f3574bbaa776fbd372` |
 
 ```bash
 python -c "import json;print(json.load(open('examples/reports/egress.json'))['findings_digest'])"
@@ -43,38 +44,51 @@ covers the issuance timestamp, so two honest runs produce two different values.
 
 **`key_provenance` emits no digest.** Its report carries findings and a scope
 statement and nothing that reproduces, so the one-value comparison above does not
-work for it — you can only re-run it and read the findings. The other two tools
-carry `findings_digest` and `subject_digest`. This is pinned in
-`tests/test_examples_reproduce.py` so it cannot silently become true of a second
-tool without someone noticing.
+work for it — you can only re-run it and read the findings. Egress, CBOM and SBOM
+carry `findings_digest`. This is pinned in `tests/test_examples_reproduce.py` so it
+cannot silently become true of another tool without someone noticing.
 
-## Exit codes, for CI
-
-```
-0  clean          no findings
-1  findings       the scan ran and found something
-2  could not run  bad arguments, unreadable target — NOT a clean result
-```
-
-⚠️ **1 and 2 are different answers and a pipeline that treats them alike will
-eventually report a broken scan as a passing one.** Our own regeneration script got
-this wrong on its first run and the fixture caught it within a minute.
+Exit codes for the scanners are in the [root README](../README.md#exit-codes).
+`sbom` exits 0 if it ran; whether the BOM lists components is a field, not an
+exit code.
 
 ## What the fixture contains, and why
 
-`sample_service/` is **not** shipped software. It is three small modules built to
+`sample_service/` is **not** shipped software. It is a small tree built to
 produce findings, because a demo where every scanner comes back clean demonstrates
 nothing:
 
 | File | Contains | Found by |
 |---|---|---|
-| `collector.py` | a real network import and an outbound POST | no-egress auditor |
+| `collector.py` | a real network import and an outbound POST | no-egress auditor (`network-import`) |
+| `pyproject.toml` | `stripe` declared, never imported | no-egress auditor (`declared-network-dependency`) |
+| `urls.py` | `from urllib.parse import urlparse` | **nothing — parse is not a socket** |
+| `motor.py` + `drive.py` | local module named `motor` | **not a network-import; name in `shadowed_imports`** |
 | `pricing.py` | pure computation, no egress | **nothing — the negative case** |
-| `tokens.py` | MD5, `random` for a session id, and a signing key written in the source | CBOM, key provenance |
+| `tokens.py` | MD5, `random`, in-source HMAC key, JWT RS256, pyca `hashes.MD5()`, PEM armour | CBOM, key provenance |
 
-`pricing.py` matters as much as the other two. **An auditor that flags everything
-is not strict, it is unusable**, and the committed reports show it staying quiet
-where it should.
+`pricing.py`, `urls.py` and the local `motor` module matter as much as the hits.
+**An auditor that flags everything is not strict, it is unusable**, and the
+committed reports show it staying quiet where it should.
+
+## Hand this to a prospect
+
+No account. No upload. No install.
+
+```bash
+git clone https://github.com/EntroLabs/EntroVouch
+cd EntroVouch
+python -m pytest -q
+python examples/regenerate.py
+```
+
+Then compare **one value**: `findings_digest` in `examples/reports/egress.json`
+against the digest table at the top of this page. If it matches, the tool on
+their machine produced exactly what we published.
+
+What they are looking at is limited assurance: nothing came to our attention,
+not a proof of absence. Independent issuance of that same report is the paid
+layer — same tool, a third party on the signature.
 
 ## What a clean report does and does not mean
 

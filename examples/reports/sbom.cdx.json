@@ -1,0 +1,110 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-09-01T22:33:55.223326+00:00",
+    "lifecycles": [
+      {
+        "phase": "pre-build"
+      }
+    ],
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "ENTROVOUCH SBOM",
+          "version": "1.0.0"
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "name": "entrovouch/examples/sample_service",
+      "bom-ref": "subject",
+      "hashes": [
+        {
+          "alg": "SHA3-256",
+          "content": "cac9b2a514b4fa6fb587333ac25d3862a222ca9e156bf34bfd4120d69073d11b"
+        }
+      ]
+    },
+    "properties": [
+      {
+        "name": "entrovouch:verdict",
+        "value": "DECLARED"
+      },
+      {
+        "name": "entrovouch:generationContext",
+        "value": "pre-build"
+      },
+      {
+        "name": "entrovouch:coverage",
+        "value": "top-level-declared-only"
+      },
+      {
+        "name": "entrovouch:scopeStatement",
+        "value": "Software Bill of Materials from declared top-level dependencies in pyproject.toml, requirements*.txt, setup.cfg and package.json. Generation context: pre-build (source manifests). Transitive dependencies are NOT enumerated. Component hashes of executable artifacts are UNKNOWN \u2014 this tool does not see a build. Licenses and component producers are UNKNOWN unless present in the declaration, which they almost never are. npm devDependencies are omitted. package-lock.json / poetry.lock / uv.lock are not read (a lockfile is a resolved graph; this pass is the declaration). CISA 2026 Minimum Elements conformance is NOT CLAIMED. Unknown fields are labelled unknown-to-author, not withheld."
+      },
+      {
+        "name": "entrovouch:findingsDigest",
+        "value": "f955eb1e217a7f9df1c88e70ea642b8331a8de08f4f732f3574bbaa776fbd372"
+      },
+      {
+        "name": "entrovouch:subjectDigest",
+        "value": "cac9b2a514b4fa6fb587333ac25d3862a222ca9e156bf34bfd4120d69073d11b"
+      },
+      {
+        "name": "entrovouch:cisa2026MinimumElements",
+        "value": "NOT CLAIMED \u2014 source-manifest SBOM; component hashes, transitive coverage and licenses are labelled unknown rather than filled"
+      },
+      {
+        "name": "entrovouch:unknownFields",
+        "value": "component-hash (no executable artifact); component-license; component-producer; transitive-dependencies; component-version (declared as a range, not a pin)"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg/pypi/stripe#pyproject.toml:10",
+      "name": "stripe",
+      "purl": "pkg:pypi/stripe",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "entrovouch:declaredSpec",
+          "value": "stripe>=2.0"
+        },
+        {
+          "name": "entrovouch:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "entrovouch:manifest",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "entrovouch:versionStatus",
+          "value": "unknown"
+        },
+        {
+          "name": "entrovouch:componentHash",
+          "value": "unknown"
+        },
+        {
+          "name": "entrovouch:componentLicense",
+          "value": "unknown"
+        },
+        {
+          "name": "entrovouch:componentProducer",
+          "value": "unknown"
+        },
+        {
+          "name": "entrovouch:unknownKind",
+          "value": "unknown-to-author"
+        }
+      ]
+    }
+  ]
+}

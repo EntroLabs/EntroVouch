@@ -40,6 +40,11 @@ STEPS: list[tuple[str, list[str]]] = [
     ("key provenance",    ["-m", "entrovouch.key_provenance", TREE,
                            "--json", f"{OUT}/key_provenance.json",
                            "--label", "entrovouch/examples/sample_service"]),
+    ("SBOM",              ["-m", "entrovouch.sbom", TREE,
+                           "--json", f"{OUT}/sbom.json",
+                           "--cdx", f"{OUT}/sbom.cdx.json",
+                           "--md", f"{OUT}/sbom.md",
+                           "--label", "entrovouch/examples/sample_service"]),
 ]
 
 

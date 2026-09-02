@@ -107,6 +107,33 @@ RULES: dict[str, dict[str, str]] = {
             "user's browser on the page's behalf."
         ),
     },
+    "declared-network-dependency": {
+        "name": "DeclaredNetworkDependency",
+        "short": "A manifest names a known network package",
+        "full": (
+            "pyproject.toml, requirements.txt, setup.cfg or package.json "
+            "declares a dependency that this tool knows as network-capable. "
+            "That is evidence the tree depends on the package, not a claim "
+            "that a call site in source opens a socket."
+        ),
+    },
+    "network-dependency": {
+        "name": "NetworkPackageSubmodule",
+        "short": "A non-network submodule of a network package is imported",
+        "full": (
+            "The file imports a submodule of a network-capable package that "
+            "does not itself open a socket (for example urllib.parse). "
+            "Reported as dependency evidence, not as a network call."
+        ),
+    },
+    "unparseable-source": {
+        "name": "UnparseableSource",
+        "short": "A file could not be parsed and was not analysed",
+        "full": (
+            "The scanner could not parse this file. An unanalysed region is a "
+            "gap in coverage, not an absence of findings."
+        ),
+    },
 }
 
 _LEVELS = ("none", "note", "warning", "error")

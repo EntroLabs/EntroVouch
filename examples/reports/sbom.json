@@ -1,0 +1,51 @@
+{
+  "tool": "ENTROVOUCH SBOM",
+  "tool_version": "1.0.0",
+  "target": "entrovouch/examples/sample_service",
+  "scanned_at_utc": "2026-09-01T22:33:55.223326+00:00",
+  "files_scanned": 1,
+  "verdict": "DECLARED",
+  "components": [
+    {
+      "name": "stripe",
+      "ecosystem": "pypi",
+      "spec": "stripe>=2.0",
+      "file": "pyproject.toml",
+      "line": 10,
+      "scope": "required",
+      "extra": "",
+      "version": "",
+      "purl": "pkg:pypi/stripe",
+      "version_status": "unknown",
+      "hash_status": "unknown",
+      "license_status": "unknown",
+      "producer_status": "unknown"
+    }
+  ],
+  "unknown_fields": [
+    "component-hash (no executable artifact)",
+    "component-license",
+    "component-producer",
+    "transitive-dependencies",
+    "component-version (declared as a range, not a pin)"
+  ],
+  "generation_context": "pre-build",
+  "coverage": "top-level-declared-only",
+  "scope_statement": "Software Bill of Materials from declared top-level dependencies in pyproject.toml, requirements*.txt, setup.cfg and package.json. Generation context: pre-build (source manifests). Transitive dependencies are NOT enumerated. Component hashes of executable artifacts are UNKNOWN \u2014 this tool does not see a build. Licenses and component producers are UNKNOWN unless present in the declaration, which they almost never are. npm devDependencies are omitted. package-lock.json / poetry.lock / uv.lock are not read (a lockfile is a resolved graph; this pass is the declaration). CISA 2026 Minimum Elements conformance is NOT CLAIMED. Unknown fields are labelled unknown-to-author, not withheld.",
+  "cisa_2026_conformance": "NOT CLAIMED \u2014 source-manifest SBOM; component hashes, transitive coverage and licenses are labelled unknown rather than filled",
+  "subject": [
+    {
+      "name": "entrovouch/examples/sample_service",
+      "digest": {
+        "sha3-256": "cac9b2a514b4fa6fb587333ac25d3862a222ca9e156bf34bfd4120d69073d11b"
+      }
+    }
+  ],
+  "subject_digest": "cac9b2a514b4fa6fb587333ac25d3862a222ca9e156bf34bfd4120d69073d11b",
+  "findings_digest": "f955eb1e217a7f9df1c88e70ea642b8331a8de08f4f732f3574bbaa776fbd372",
+  "content_hash": "bc4fe3092711d7b04995de25e4464e045458daee2beb5a1464bc854ee7bee1eb",
+  "integrity_tag": "",
+  "signature": null,
+  "signature_algorithm": "UNSIGNED - content hash only, origin NOT attested",
+  "public_root": ""
+}

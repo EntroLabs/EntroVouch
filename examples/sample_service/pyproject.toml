@@ -1,0 +1,11 @@
+# Fixture manifest — not a product. `stripe` is declared and never imported, so
+# the no-egress auditor can show `declared-network-dependency` as a different
+# finding from the call site in collector.py.
+[project]
+name = "sample-service"
+version = "0.0.0"
+description = "Fixture tree for EntroVouch demos. Do not install."
+requires-python = ">=3.10"
+dependencies = [
+    "stripe>=2.0",
+]

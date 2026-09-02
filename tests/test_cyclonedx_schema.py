@@ -112,6 +112,19 @@ def test_our_real_output_validates():
     assert len(bom["components"]) > 0, "validated an empty BOM, which proves nothing"
 
 
+def test_sbom_output_validates():
+    """The CRA-shaped software BOM, against the same official 1.6 schema."""
+    from entrovouch.sbom import build_sbom, to_cyclonedx as to_cdx_sbom
+    examples = Path(__file__).resolve().parents[1] / "examples" / "sample_service"
+    bom = to_cdx_sbom(dataclasses.asdict(build_sbom(examples, label="fixture")))
+    errors = sorted(_validator().iter_errors(bom), key=lambda e: list(e.absolute_path))
+    assert not errors, "\n".join(
+        f"{'/'.join(str(x) for x in e.absolute_path) or '<root>'}: {e.message[:200]}"
+        for e in errors[:10])
+    assert bom["components"], "fixture declares stripe; an empty SBOM proves nothing"
+    assert bom["components"][0]["type"] == "library"
+
+
 def test_the_validator_actually_rejects_bad_documents():
     """🔴 A validator reporting zero errors is exactly when to distrust it.
 

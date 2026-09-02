@@ -1,6 +1,6 @@
 {
   "target": "entrovouch/examples/sample_service",
-  "files_scanned": 3,
+  "files_scanned": 6,
   "findings": [
     {
       "file": "tokens.py",

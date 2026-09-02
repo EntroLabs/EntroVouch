@@ -3,7 +3,7 @@
   "specVersion": "1.6",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-09-01T02:04:38.604067+00:00",
+    "timestamp": "2026-09-01T22:33:54.943636+00:00",
     "tools": {
       "components": [
         {
@@ -20,7 +20,7 @@
       "hashes": [
         {
           "alg": "SHA3-256",
-          "content": "3855a3f2fd37a4eff5b724a72acd0f541bfd08764a92e695077f9589c6dd520a"
+          "content": "b707f8f2ed031bd9358248241bb083fbd6580388ed3b1369f5bb83a7fa38cb99"
         }
       ]
     },
@@ -31,7 +31,7 @@
       },
       {
         "name": "entrovouch:filesScanned",
-        "value": "3"
+        "value": "6"
       },
       {
         "name": "entrovouch:scopeStatement",
@@ -39,11 +39,11 @@
       },
       {
         "name": "entrovouch:findingsDigest",
-        "value": "742552a9cbdf95f238cf7018371323b9cf66baf896c26f2067324af091960299"
+        "value": "c945e12617f146e65ff2ebb9bbfe96dd0f49234b419193ca507d18e1b66754b6"
       },
       {
         "name": "entrovouch:subjectDigest",
-        "value": "3855a3f2fd37a4eff5b724a72acd0f541bfd08764a92e695077f9589c6dd520a"
+        "value": "b707f8f2ed031bd9358248241bb083fbd6580388ed3b1369f5bb83a7fa38cb99"
       },
       {
         "name": "entrovouch:minimumElementsConformance",
@@ -94,6 +94,126 @@
     },
     {
       "type": "cryptographic-asset",
+      "bom-ref": "crypto/MD5/tokens.py#52",
+      "name": "MD5",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 52
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "BROKEN"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "compromised"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "hashes.MD5()  [pyca/cryptography]"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto/RSASSA-PKCS1-v1_5 (JWS RSnnn)/tokens.py#46",
+      "name": "RSASSA-PKCS1-v1_5 (JWS RSnnn)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 46
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "VULNERABLE"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "deactivated"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "token: \"RS256\""
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto/RSA private key (PEM in source)/tokens.py#58",
+      "name": "RSA private key (PEM in source)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "other",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 58
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "VULNERABLE"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "deactivated"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "-----BEGIN RSA PRIVATE KEY----- \u2014 key material present in the source tree"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
       "bom-ref": "crypto/random-MersenneTwister/tokens.py#9",
       "name": "random-MersenneTwister",
       "cryptoProperties": {
@@ -129,6 +249,86 @@
         {
           "name": "entrovouch:detail",
           "value": "import random"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto/PyJWT (algorithm-dependent \u2014 see JWS alg tokens)/tokens.py#45",
+      "name": "PyJWT (algorithm-dependent \u2014 see JWS alg tokens)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "other",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 45
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "REVIEW"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "active"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "import jwt"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto/pyca/cryptography (classical default suite)/tokens.py#51",
+      "name": "pyca/cryptography (classical default suite)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "other",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "generic",
+          "cryptoFunctions": [
+            "unknown"
+          ],
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": ""
+      },
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tokens.py",
+            "line": 51
+          }
+        ]
+      },
+      "properties": [
+        {
+          "name": "entrovouch:quantumStatus",
+          "value": "REVIEW"
+        },
+        {
+          "name": "entrovouch:state",
+          "value": "active"
+        },
+        {
+          "name": "entrovouch:detail",
+          "value": "from cryptography.hazmat.primitives import ..."
         }
       ]
     },

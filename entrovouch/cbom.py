@@ -713,7 +713,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("target", type=Path, help="directory to inventory")
     ap.add_argument("--json", type=Path, default=None, help="write signed JSON CBOM")
     ap.add_argument("--md", type=Path, default=None, help="write markdown CBOM")
-    ap.add_argument("--covenant", type=Path, default=None, help="path to Covenant text (else default)")
+    ap.add_argument("--covenant", type=Path, default=None,
+                    help="IGNORED (kept so old invocations do not crash). "
+                         "This is not a signing key. Pass --key for origin.")
     ap.add_argument("--key", type=Path, default=None,
                     help="signing identity (create one with no_egress_auditor --init-key). "
                          "WITHOUT THIS THE CBOM IS UNSIGNED.")

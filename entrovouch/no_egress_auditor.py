@@ -44,6 +44,7 @@ from pathlib import Path
 from ._version import __version__
 from .signer import (ALGORITHM, UNSIGNED, MerkleSigner, SignerError,
                      verify_signature)
+from .manifests import collect_declared_deps
 
 # ---------------------------------------------------------------------------
 # Policy — the same lists the hardened dashboard checker uses, generalized.
@@ -180,6 +181,49 @@ PY_NET_BINARIES = {
     "rsync", "ftp", "telnet", "git", "pip", "pip3", "npm", "yarn",
     "apt", "apt-get", "docker", "kubectl", "aws", "gcloud", "az",
 }
+
+def _dist_candidates(name: str) -> set[str]:
+    """PEP 503-ish variants of a distribution name for blocklist lookup."""
+    raw = name.strip()
+    if not raw:
+        return set()
+    norm = re.sub(r"[-_.]+", "-", raw.lower())
+    und = norm.replace("-", "_")
+    dotted = norm.replace("-", ".")
+    return {raw.lower(), norm, und, dotted}
+
+
+def _declared_is_network(pkg: str) -> bool:
+    """True when a declared dependency names a known network package.
+
+    Exact / normalised match against the same lists the import checker uses.
+    Deliberately does NOT treat every `google-*` as `google.cloud`: a prefix
+    that wide is how this tool manufactures false positives. `slack-sdk` ->
+    `slack_sdk` is the match that is actually load-bearing.
+    """
+    cands = _dist_candidates(pkg)
+    listed = FORBIDDEN_IMPORT_MODULES | JS_NET_MODULES | INBOUND_IMPORT_MODULES
+    if cands & listed:
+        return True
+    roots = {m.split(".")[0] for m in listed}
+    return bool(cands & roots)
+
+
+def _check_manifests(target: Path) -> tuple[list["Finding"], list[tuple[str, str]]]:
+    """Scan declared-dependency manifests. Returns (findings, tree entries)."""
+    deps, errors, files = collect_declared_deps(target)
+    tree = [(rel, _file_digest(p)) for p, rel in files]
+    findings: list[Finding] = []
+    for e in errors:
+        findings.append(Finding(e.file, e.line, "unparseable-source", e.detail))
+    for d in deps:
+        if _declared_is_network(d.name):
+            findings.append(Finding(
+                d.file, d.line, "declared-network-dependency",
+                f"declared dependency {d.name!r} names a known network package "
+                f"— not a call site; the tree depends on it",
+            ))
+    return findings, tree
 
 
 def _classify_module(name: str) -> str | None:
@@ -462,7 +506,7 @@ def _check_ecmascript(path: Path, rel: str) -> list[Finding]:
 class Finding:
     file: str
     line: int
-    kind: str          # network-import | git-remote | subprocess-shell | subprocess-net-binary | dynamic-exec | html-external
+    kind: str          # network-import | network-dependency | declared-network-dependency | git-remote | subprocess-shell | subprocess-net-binary | dynamic-exec | html-external | unparseable-source
     detail: str
 
 
@@ -502,7 +546,12 @@ class AuditReport:
         "itself supplies a top-level module of that name, because that module "
         "shadows any installed package; every such name is listed in "
         "`shadowed_imports`, so a network client VENDORED into the tree root "
-        "appears there rather than disappearing. Non-literal arguments (variables, f-strings, lists built at "
+        "appears there rather than disappearing. Declared dependencies in "
+        "pyproject.toml, requirements*.txt, setup.cfg and package.json that "
+        "name a known network package are reported as "
+        "`declared-network-dependency`: evidence the tree depends on that "
+        "package, not a claim that a call site reaches the network. "
+        "Non-literal arguments (variables, f-strings, lists built at "
         "runtime) are not resolved. This report is therefore DETECTION-grade "
         "evidence and does not support an unqualified claim of absence."
     )
@@ -750,8 +799,12 @@ def _check_markup(path: Path, rel: str) -> list[Finding]:
 
 
 # ---------------------------------------------------------------------------
-# Signing — mirrors ENTROATTEST: the Covenant text IS the key. No secret needed;
-# authenticity comes from Covenant-binding + content-binding, not key secrecy.
+# Content hash. Origin is MerkleSigner (--key), not this string.
+#
+# `_DEFAULT_COVENANT` is a motto kept so old callers that still pass
+# `covenant_text=` do not crash. It is NOT a key. HMAC signing keyed by this
+# literal was removed 2026-08-20 after it was demonstrated forgeable. `_sign`
+# ignores the argument. Do not put it back.
 # ---------------------------------------------------------------------------
 _DEFAULT_COVENANT = "Optimize systems for people, not margin extraction. One Covenant. Always."
 
@@ -995,6 +1048,10 @@ def audit(target: Path | str, covenant_text: str = _DEFAULT_COVENANT,
             scanned += 1
             tree.append((rel, _file_digest(p)))
             findings += _check_markup(p, rel)
+    man_findings, man_tree = _check_manifests(target)
+    findings += man_findings
+    scanned += len(man_tree)
+    tree.extend(man_tree)
     rep.shadowed_imports = sorted(shadowed)
     rep.files_scanned = scanned
     rep.findings = [asdict(f) for f in findings]
@@ -1107,7 +1164,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("target", type=Path, nargs="?", help="directory to audit")
     ap.add_argument("--json", type=Path, default=None, help="write JSON report")
     ap.add_argument("--md", type=Path, default=None, help="write markdown report")
-    ap.add_argument("--covenant", type=Path, default=None, help="path to Covenant text (else default)")
+    ap.add_argument("--covenant", type=Path, default=None,
+                    help="IGNORED (kept so old invocations do not crash). "
+                         "This is not a signing key. Pass --key for origin.")
     ap.add_argument("--key", type=Path, default=None,
                     help="signing identity (see --init-key). WITHOUT THIS THE REPORT IS "
                          "UNSIGNED and attests nothing about its origin.")

@@ -238,10 +238,9 @@ def _headings(text: str) -> list[str]:
 # The README's sections, pinned. Order is part of the assertion.
 EXPECTED_HEADINGS = [
     "# ENTROVOUCH",
-    "## Why this exists",
-    "## Install",
+    "## Try it",
     "## Use",
-    "### Interoperable output",
+    "### Adapters",
     "### Reproducing a report",
     "## What it will not do",
     "### How often is it wrong?",

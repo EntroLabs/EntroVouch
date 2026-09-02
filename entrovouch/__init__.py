@@ -7,6 +7,7 @@ from .signer import MerkleSigner, verify_signature, ALGORITHM
 from .sarif import to_sarif
 from .attestation import to_statement
 from .cyclonedx import to_cyclonedx
+from .sbom import build_sbom, to_cyclonedx as to_cyclonedx_sbom, SBOM
 
 # Eager imports, deliberately.
 #
@@ -35,5 +36,6 @@ __all__ = [
     "MerkleSigner", "verify_signature", "ALGORITHM",
     # interoperable output
     "to_sarif", "to_statement", "to_cyclonedx",
+    "build_sbom", "to_cyclonedx_sbom", "SBOM",
     "__version__",
 ]

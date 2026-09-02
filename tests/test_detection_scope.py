@@ -614,6 +614,89 @@ def test_no_source_file_contains_a_stray_control_byte():
 
 
 # --------------------------------------------------------------------------
+# Declared-intent — the honest dent in tier A′ without lengthening the list
+# --------------------------------------------------------------------------
+def test_stripe_in_pyproject_is_declared_not_a_call_site(tmp_path):
+    """`import stripe` of a listed name is a call-site finding.
+    `stripe` in pyproject.toml with no import is not. Both must be visible,
+    and they must not share a kind — that is the whole point of the field.
+    """
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = 'x'\nversion = '0'\n"
+        "dependencies = [\n    'stripe>=2.0',\n]\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    rep = no_egress_auditor.audit(tmp_path)
+    kinds = {_get(f, "kind") for f in rep.findings}
+    assert kinds == {"declared-network-dependency"}, kinds
+    assert "network-import" not in kinds
+    assert rep.verdict == "FINDINGS"
+
+
+def test_requirements_txt_stripe_is_declared(tmp_path):
+    (tmp_path / "requirements.txt").write_text(
+        "# prod\nstripe>=2.0\npytest>=7\n", encoding="utf-8",
+    )
+    kinds = _egress_kinds(tmp_path)
+    assert kinds == {"declared-network-dependency"}
+
+
+def test_package_json_axios_is_declared(tmp_path):
+    (tmp_path / "package.json").write_text(
+        '{"name":"x","dependencies":{"axios":"1.6.0","left-pad":"1.0.0"}}\n',
+        encoding="utf-8",
+    )
+    kinds = _egress_kinds(tmp_path)
+    assert kinds == {"declared-network-dependency"}
+
+
+def test_pytest_optional_extra_is_not_a_network_declaration(tmp_path):
+    """Precision: test extras are not telemetry."""
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = 'x'\nversion = '0'\n"
+        "dependencies = []\n"
+        "[project.optional-dependencies]\n"
+        "test = ['pytest>=7', 'hypothesis>=6', 'jsonschema>=4']\n",
+        encoding="utf-8",
+    )
+    assert _egress_kinds(tmp_path) == set()
+
+
+def test_held_out_library_in_pyproject_is_still_invisible(tmp_path):
+    """Declared-intent uses the SAME list. It does not secretly complete it.
+    `shopify` is in the held-out sample; putting it in a manifest must not
+    become a reason to delete test_held_out_recall_is_zero_and_that_is_the_point.
+    """
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = 'x'\nversion = '0'\n"
+        "dependencies = ['shopify>=1']\n",
+        encoding="utf-8",
+    )
+    assert _egress_kinds(tmp_path) == set()
+
+
+def test_cli_covenant_flag_is_documented_as_ignored():
+    """The HMAC keyed by that file is gone. The flag remaining as if it
+    still signed would be the 2026-08-20 defect wearing a help string."""
+    import os
+    import subprocess
+    import sys
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    r = subprocess.run(
+        [sys.executable, "-m", "entrovouch.no_egress_auditor", "--help"],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    assert r.returncode == 0
+    assert "IGNORED" in r.stdout
+    assert "Covenant text IS the key" not in r.stdout
+
+
+
+# --------------------------------------------------------------------------
 # LOCAL MODULES SHADOW INSTALLED PACKAGES — the precision cost of a longer list
 # --------------------------------------------------------------------------
 def test_a_local_module_is_not_a_network_import(tmp_path):

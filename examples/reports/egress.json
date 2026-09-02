@@ -2,8 +2,8 @@
   "tool": "ENTROVOUCH no-egress auditor",
   "tool_version": "1.0.0",
   "target": "entrovouch/examples/sample_service",
-  "scanned_at_utc": "2026-09-01T02:04:38.426199+00:00",
-  "files_scanned": 3,
+  "scanned_at_utc": "2026-09-01T22:33:54.676452+00:00",
+  "files_scanned": 7,
   "verdict": "FINDINGS",
   "findings": [
     {
@@ -11,21 +11,29 @@
       "line": 2,
       "kind": "network-import",
       "detail": "import urllib.request"
+    },
+    {
+      "file": "pyproject.toml",
+      "line": 10,
+      "kind": "declared-network-dependency",
+      "detail": "declared dependency 'stripe' names a known network package \u2014 not a call site; the tree depends on it"
     }
   ],
-  "scope_statement": "Static analysis of Python, TypeScript and HTML/JS. Catches the realistic/accidental egress class plus common deliberate patterns (network-capable imports, git remote subcommands, shell=True and os.system/popen, child_process, dynamic import/exec/eval, external references, network binaries spawned via argv list, telemetry/APM and cloud SDK imports). Does NOT mathematically prove zero egress in a Turing-complete language. Known blind spots, stated rather than implied: detection is BLOCKLIST-BASED, so it is complete only against names it knows -- a renamed, vendored or dynamically-constructed module or argv entry is invisible, and a blocklist can never be complete by construction. MEASURED 2026-08-31: against 59 network libraries chosen WITHOUT reference to the blocklist, recall is 0%, and it stayed 0% after the list was extended by 46 names -- so a PLAIN, unobfuscated `import X` of a library this tool does not name is invisible, exactly like an obfuscated one. Check FORBIDDEN_IMPORT_MODULES against your own dependencies before reading anything into a CLEAN verdict. Files that fail to parse are reported as `unparseable-source` findings and were NOT analysed. An import is NOT counted as a network import when the tree itself supplies a top-level module of that name, because that module shadows any installed package; every such name is listed in `shadowed_imports`, so a network client VENDORED into the tree root appears there rather than disappearing. Non-literal arguments (variables, f-strings, lists built at runtime) are not resolved. This report is therefore DETECTION-grade evidence and does not support an unqualified claim of absence.",
+  "scope_statement": "Static analysis of Python, TypeScript and HTML/JS. Catches the realistic/accidental egress class plus common deliberate patterns (network-capable imports, git remote subcommands, shell=True and os.system/popen, child_process, dynamic import/exec/eval, external references, network binaries spawned via argv list, telemetry/APM and cloud SDK imports). Does NOT mathematically prove zero egress in a Turing-complete language. Known blind spots, stated rather than implied: detection is BLOCKLIST-BASED, so it is complete only against names it knows -- a renamed, vendored or dynamically-constructed module or argv entry is invisible, and a blocklist can never be complete by construction. MEASURED 2026-08-31: against 59 network libraries chosen WITHOUT reference to the blocklist, recall is 0%, and it stayed 0% after the list was extended by 46 names -- so a PLAIN, unobfuscated `import X` of a library this tool does not name is invisible, exactly like an obfuscated one. Check FORBIDDEN_IMPORT_MODULES against your own dependencies before reading anything into a CLEAN verdict. Files that fail to parse are reported as `unparseable-source` findings and were NOT analysed. An import is NOT counted as a network import when the tree itself supplies a top-level module of that name, because that module shadows any installed package; every such name is listed in `shadowed_imports`, so a network client VENDORED into the tree root appears there rather than disappearing. Declared dependencies in pyproject.toml, requirements*.txt, setup.cfg and package.json that name a known network package are reported as `declared-network-dependency`: evidence the tree depends on that package, not a claim that a call site reaches the network. Non-literal arguments (variables, f-strings, lists built at runtime) are not resolved. This report is therefore DETECTION-grade evidence and does not support an unqualified claim of absence.",
   "subject": [
     {
       "name": "entrovouch/examples/sample_service",
       "digest": {
-        "sha3-256": "3855a3f2fd37a4eff5b724a72acd0f541bfd08764a92e695077f9589c6dd520a"
+        "sha3-256": "9919e0bddd5cd02013d90fbb4ad235be4d091e9053cbae2bacff42af04a3c71d"
       }
     }
   ],
-  "shadowed_imports": [],
-  "subject_digest": "3855a3f2fd37a4eff5b724a72acd0f541bfd08764a92e695077f9589c6dd520a",
-  "findings_digest": "ce11b25dd054e837b029a279c10d813923fa9128f8c551c1d33f1494fb35c59e",
-  "content_hash": "472906103c37fa3b1a3bb222ac7c75c5a04de304d9ea46458c68e740c05a27db",
+  "shadowed_imports": [
+    "motor"
+  ],
+  "subject_digest": "9919e0bddd5cd02013d90fbb4ad235be4d091e9053cbae2bacff42af04a3c71d",
+  "findings_digest": "505e9bdfecedb54a38919dc6f710a1269bddb26019f3385c155f3bee0df6bcf2",
+  "content_hash": "29cf2449f3d78fbdfaf263e3a86935dcdc74284594a4c45eef0ba332e7cb13c3",
   "integrity_tag": "",
   "signature_algorithm": "UNSIGNED - content hash only, origin NOT attested",
   "signature": null,
