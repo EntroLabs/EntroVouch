@@ -168,3 +168,110 @@ def test_the_digests_printed_in_the_examples_readme_are_the_real_ones():
         "reader: " + ", ".join(missing) + ". Add them to the table, or the demo "
         "silently covers less than it appears to."
     )
+
+
+def test_the_readme_try_it_command_reproduces_the_published_digest(tmp_path):
+    """🔴 THE GAP THAT MADE EVERY OTHER TEST IN THIS FILE GREEN OVER A BROKEN DEMO.
+
+    Found 2026-09-02, in a clean anonymous clone of the published repo.
+
+    The root README's `## Try it` block — the page calls it *"the whole pitch"* —
+    told a reader to run::
+
+        python -m entrovouch.no_egress_auditor examples/sample_service
+
+    and compare `findings_digest` against the table in `examples/README.md`. It
+    did **not** match. `--label` is inside the digested body, `examples/regenerate.py`
+    passes one and that command did not, so the published table and the documented
+    command could not agree by construction.
+
+    ⭐ **Every guard in this file was green throughout**, because they all reproduce
+    via `regenerate.py`'s argv. They verified *the committed report against the tool*
+    and never *the documented command against the published table*. A test that
+    builds its own arguments cannot detect that the arguments in the docs are wrong —
+    it is a second implementation of the happy path, not a check on the first.
+
+    ⭐ **THE ARGV MUST COME OUT OF THE README.** That is the whole point: if someone
+    edits the command on the page, this fails. If this test hardcoded the command,
+    it would pass over exactly the defect it was written for.
+
+    Only `--json <path>` is appended, so the report can be read as data instead of
+    scraped from truncated markdown. That flag chooses an output destination and is
+    not part of the report body — asserted below rather than assumed.
+    """
+    import re
+    import shlex
+
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+
+    section = re.search(r"^## Try it\s*$(.*?)^## ", readme, re.S | re.M)
+    assert section, "README no longer has a '## Try it' section — did the demo move?"
+    blocks = re.findall(r"```bash\n(.*?)```", section.group(1), re.S)
+    assert blocks, "the '## Try it' section shows no bash block for a reader to run"
+
+    commands = [ln.strip() for b in blocks for ln in b.splitlines()
+                if ln.strip().startswith("python -m entrovouch")]
+    assert len(commands) == 1, (
+        "expected exactly one `python -m entrovouch...` line in '## Try it', found "
+        f"{len(commands)}: {commands}. If the demo now shows several, this guard must "
+        "check each of them rather than silently pick one."
+    )
+
+    argv = shlex.split(commands[0])
+    assert argv[:2] == ["python", "-m"], f"unexpected command shape: {argv}"
+    out = tmp_path / "readme_try_it.json"
+    r = subprocess.run(
+        [sys.executable, *argv[1:], "--json", str(out)],
+        cwd=REPO, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=300,
+    )
+    assert r.returncode in (0, 1), (
+        "the command the README tells a reader to run did not complete "
+        f"(exit {r.returncode}):\n" + (r.stderr or r.stdout or "")[-800:]
+    )
+    produced = json.loads(out.read_text(encoding="utf-8"))["findings_digest"]
+
+    examples_readme = (REPO / "examples" / "README.md").read_text(encoding="utf-8")
+    row = re.search(
+        r"`reports/egress\.json`\s*\|\s*`findings_digest`\s*\|\s*`([0-9a-f]{64})`",
+        examples_readme)
+    assert row, (
+        "could not find the egress `findings_digest` row in examples/README.md. "
+        "The README sends readers to that table; if its shape changed, update this "
+        "guard in the same commit."
+    )
+    published = row.group(1)
+
+    assert produced == published, (
+        "THE README'S OWN COMMAND DOES NOT REPRODUCE THE PUBLISHED DIGEST.\n"
+        f"  command  : {commands[0]}\n"
+        f"  produced : {produced}\n"
+        f"  published: {published}\n"
+        "A prospect following the front page would see a mismatch and reasonably "
+        "conclude the published report was fabricated. Fix the command on the page "
+        "or regenerate the reports — do not adjust this test."
+    )
+
+
+def test_the_json_flag_does_not_change_the_report_body(tmp_path):
+    """The guard above appends `--json`. This asserts that is a free action.
+
+    If `--json` ever entered the digested body, the test above would be checking a
+    report no reader ever produces, and would go green while the documented path
+    broke — the same substitution it was written to catch, one level down.
+    """
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    common = [sys.executable, "-m", "entrovouch.no_egress_auditor", TREE,
+              "--label", "entrovouch/examples/sample_service"]
+    for out in (a, b):
+        r = subprocess.run(common + ["--json", str(out)], cwd=REPO,
+                           capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=300)
+        assert r.returncode in (0, 1), (r.stderr or r.stdout)[-400:]
+    da = json.loads(a.read_text(encoding="utf-8"))["findings_digest"]
+    db = json.loads(b.read_text(encoding="utf-8"))["findings_digest"]
+    assert da == db, (
+        f"the output path changed the findings digest ({da} vs {db}) — `--json` is "
+        "not a free action and the README-command guard above is no longer valid."
+    )

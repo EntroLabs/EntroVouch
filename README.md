@@ -30,21 +30,35 @@ answer than *"here is a signed audit; regenerate it yourself."*
 ```bash
 git clone https://github.com/EntroLabs/EntroVouch
 cd EntroVouch
-python -m entrovouch.no_egress_auditor examples/sample_service
+python -m entrovouch.no_egress_auditor examples/sample_service --label entrovouch/examples/sample_service
 ```
 
 Then compare **`findings_digest`** to the table in [examples/README.md](examples/README.md).
 That is the whole pitch.
 
+**`--label` is not decoration.** It names the subject *inside* the signed body, so it is
+covered by `findings_digest` — a digest that ignored what was audited would read the same
+for two different trees. Pass ours to reproduce our value; pass your own
+(`org/repo@commit`) when you audit your own code, and expect a different digest, because
+it is a different claim. Omitting it is not an error: the report then names the directory
+(`sample_service`) and yields a different, equally valid digest that will not match our
+table.
+
+Python 3.14 and some earlier versions print a `RuntimeWarning` from `runpy` before the
+report. It is expected and cosmetic — this package imports its own modules eagerly on
+purpose, because the alternative (`importlib.import_module`) is dynamic import, which this
+very auditor flags as `dynamic-exec`. The trade is recorded in `entrovouch/__init__.py`:
+we would rather print a warning than ship a tool that cannot pass its own audit.
+
 Python 3.10+. No runtime dependencies. If you want to check our work:
 
 ```bash
-python -m pytest -q      # 384 tests, no installs, exit 0
+python -m pytest -q      # 386 tests, no installs, exit 0
 ```
 
-A clean clone runs **384** tests with nothing installed and exits 0. **24** more need
+A clean clone runs **386** tests with nothing installed and exits 0. **24** more need
 optional extras (`hypothesis`, `jsonschema`) and *skip* without them rather than failing.
-Run `pip install -e .[test]`, then re-run for **408**. Both counts are asserted by a
+Run `pip install -e .[test]`, then re-run for **410**. Both counts are asserted by a
 test, not maintained by hand. A `pip install` between a sceptical reader and reproducing
 our results would undercut the only claim this package makes.
 
