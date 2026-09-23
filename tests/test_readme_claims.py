@@ -37,6 +37,16 @@ def _collected_test_count() -> int:
     return int(m.group(1))
 
 
+def _module_usable(stmt: str) -> bool:
+    return (
+        subprocess.run(
+            [sys.executable, "-c", stmt],
+            capture_output=True,
+        ).returncode
+        == 0
+    )
+
+
 def _hypothesis_available() -> bool:
     """Is the optional extra USABLE? Not: does the name import.
 
@@ -50,10 +60,25 @@ def _hypothesis_available() -> bool:
     ⭐ Ask for what the code actually needs. A guard that checks something cheaper
     than the real requirement will pass in exactly the states you wrote it for.
     """
-    return (
-        subprocess.run([sys.executable, "-c", "from hypothesis import given"],
-                       capture_output=True).returncode == 0
+    return _module_usable("from hypothesis import given")
+
+
+def _jsonschema_available() -> bool:
+    return _module_usable("import jsonschema")
+
+
+def _collect_suite(rel: str) -> int:
+    r = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", rel],
+        cwd=REPO, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=300,
     )
+    m = re.search(r"(\d+)\s+tests?\s+collected", r.stdout or "")
+    if m:
+        return int(m.group(1))
+    if "no tests collected" in (r.stdout or "").lower() + (r.stderr or "").lower():
+        return 0
+    raise AssertionError(f"could not collect {rel}; pytest said: " + (r.stdout or "")[-500:])
 
 
 def test_readme_test_count_is_current():
@@ -88,14 +113,21 @@ def test_readme_test_count_is_current():
         f"({base_n}); optional tests can only add"
     )
 
-    have = _hypothesis_available()
-    expected = full_n if have else base_n
+    have_hyp = _hypothesis_available()
+    have_js = _jsonschema_available()
     actual = _collected_test_count()
-    assert expected == actual, (
-        f"hypothesis {'IS' if have else 'is NOT'} installed, so the README's "
-        f"{'with-extras' if have else 'clean-clone'} figure applies: it claims "
-        f"{expected} tests and pytest collects {actual}. Update that figure — and "
-        f"if the OTHER figure moved too, update both."
+    loaded = 0
+    if have_hyp:
+        loaded += _collect_suite("tests/test_properties.py")
+    if have_js:
+        loaded += _collect_suite("tests/test_cyclonedx_schema.py")
+        loaded += _collect_suite("tests/test_sarif_schema.py")
+    expected = base_n + loaded
+    assert actual == expected, (
+        f"this environment has hypothesis={'yes' if have_hyp else 'no'} "
+        f"jsonschema={'yes' if have_js else 'no'}: README clean-clone is {base_n}, "
+        f"optional tests loaded here {loaded}, so pytest should collect {expected}; "
+        f"it collected {actual}."
     )
 
 
@@ -111,9 +143,14 @@ def test_optional_suites_are_not_silently_empty():
     counts do not exist to be counted. It skips rather than passing, because a
     check that reports success without running is the thing this file exists about.
     """
-    if not _hypothesis_available():
-        import pytest
-        pytest.skip("hypothesis absent — the optional tests cannot be counted here")
+    import pytest
+    OPTIONAL = [
+        ("tests/test_properties.py", _hypothesis_available()),
+        ("tests/test_cyclonedx_schema.py", _jsonschema_available()),
+        ("tests/test_sarif_schema.py", _jsonschema_available()),
+    ]
+    if not any(ok for _s, ok in OPTIONAL):
+        pytest.skip("no optional extras — cannot count the extra suites here")
 
     # ⚠️ GENERALISED 2026-08-30: this counted `tests/test_properties.py` ALONE,
     # because when it was written that was the only suite behind an optional
@@ -124,32 +161,27 @@ def test_optional_suites_are_not_silently_empty():
     # ⭐ The reusable form: a check that hardcodes the members of a set silently
     # becomes wrong when the set grows. Derive the set instead. Any suite that
     # skips at module level for a missing extra belongs here automatically.
-    OPTIONAL_SUITES = [
-        "tests/test_properties.py",        # hypothesis
-        "tests/test_cyclonedx_schema.py",  # jsonschema
-        "tests/test_sarif_schema.py",      # jsonschema
-    ]
-    optional_n = 0
-    for suite in OPTIONAL_SUITES:
-        r = subprocess.run(
-            [sys.executable, "-m", "pytest", "--collect-only", "-q", suite],
-            cwd=REPO, capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=300,
-        )
-        m = re.search(r"(\d+)\s+tests?\s+collected", r.stdout or "")
-        assert m, f"could not collect {suite}; pytest said: " + (r.stdout or "")[-500:]
-        n = int(m.group(1))
-        assert n > 0, (
-            f"{suite} collected ZERO tests while its extra is installed — "
-            "the file is contributing nothing and saying nothing"
-        )
-        optional_n += n
+    for suite, extra_ok in OPTIONAL:
+        n = _collect_suite(suite)
+        if extra_ok:
+            assert n > 0, (
+                f"{suite} collected ZERO tests while its extra is installed"
+            )
+        else:
+            assert n == 0, (
+                f"{suite} collected {n} tests while its extra is missing"
+            )
+
+    src_n = 0
+    for suite, _ok in OPTIONAL:
+        text = (REPO / suite).read_text(encoding="utf-8")
+        src_n += len(re.findall(r"^def test_", text, re.M))
 
     base = int(re.search(r"#\s*(\d+)\s+tests, no installs", README).group(1))
     full = int(re.search(r"re-run for \*\*(\d+)\*\*", README).group(1))
-    assert full - base == optional_n, (
-        f"the README's two counts differ by {full - base}, but the optional suite "
-        f"holds {optional_n} tests. One of the three numbers is stale."
+    assert full - base == src_n, (
+        f"the README's two counts differ by {full - base}, but the optional "
+        f"files declare {src_n} tests. One of the three numbers is stale."
     )
 
 

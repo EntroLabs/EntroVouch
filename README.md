@@ -53,12 +53,12 @@ we would rather print a warning than ship a tool that cannot pass its own audit.
 Python 3.10+. No runtime dependencies. If you want to check our work:
 
 ```bash
-python -m pytest -q      # 386 tests, no installs, exit 0
+python -m pytest -q      # 389 tests, no installs, exit 0
 ```
 
-A clean clone runs **386** tests with nothing installed and exits 0. **24** more need
+A clean clone runs **389** tests with nothing installed and exits 0. **19** more need
 optional extras (`hypothesis`, `jsonschema`) and *skip* without them rather than failing.
-Run `pip install -e .[test]`, then re-run for **410**. Both counts are asserted by a
+Run `pip install -e .[test]`, then re-run for **408**. Both counts are asserted by a
 test, not maintained by hand. A `pip install` between a sceptical reader and reproducing
 our results would undercut the only claim this package makes.
 

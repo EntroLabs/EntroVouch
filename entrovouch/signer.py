@@ -64,7 +64,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from contextlib import nullcontext
+import threading
+from ._state_io import state_lock, atomic_write
 from pathlib import Path
 
 __all__ = [
@@ -175,18 +178,20 @@ class MerkleSigner:
     # Building the tree costs ~2**height * 1024 SHA3 ops, so it is computed once
     # per process and reused. Excluded from repr/compare: it is derived state.
     _leaf_cache: list[bytes] | None = None
+    _thread_lock: object = field(default_factory=threading.RLock, repr=False, compare=False)
 
     # -- lifecycle ---------------------------------------------------------
     @classmethod
     def create(cls, path: Path, height: int = 10) -> "MerkleSigner":
         """Generate a NEW identity. Refuses to clobber an existing keyfile."""
-        if path.exists():
-            raise SignerError(
-                f"{path} already exists - refusing to overwrite a signing key. "
-                "Delete it deliberately if the identity is genuinely being retired."
-            )
-        signer = cls(seed=os.urandom(32), height=height, next_index=0, path=path)
-        signer._save()
+        path = Path(path).resolve()
+        if type(height) is not int or not 1 <= height <= _MAX_HEIGHT:
+            raise SignerError('invalid tree height')
+        with state_lock(path):
+            if path.exists():
+                raise SignerError(f'{path} already exists; refusing to overwrite a signing key')
+            signer = cls(seed=os.urandom(32), height=height, next_index=0, path=path)
+            signer._save()
         return signer
 
     @classmethod
@@ -199,11 +204,15 @@ class MerkleSigner:
                 "a tree of that size (a corrupt or hostile keyfile must fail, "
                 "not hang)"
             )
+        seed = bytes.fromhex(raw['seed'])
+        next_index = raw['next_index']
+        if len(seed) != 32 or type(next_index) is not int or not 0 <= next_index <= (1 << h):
+            raise SignerError('malformed signing state')
         return cls(
-            seed=bytes.fromhex(raw["seed"]),
+            seed=seed,
             height=h,
-            next_index=int(raw["next_index"]),
-            path=path,
+            next_index=next_index,
+            path=Path(path).resolve(),
         )
 
     def _save(self) -> None:
@@ -211,16 +220,13 @@ class MerkleSigner:
             return
         # Write-then-replace: a truncating in-place write that fails mid-encode
         # would destroy the identity outright.
-        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
-        tmp.write_text(
+        atomic_write(self.path,
             json.dumps(
                 {"seed": self.seed.hex(), "height": self.height,
                  "next_index": self.next_index},
                 indent=2,
-            ),
-            encoding="utf-8",
+            ).encode('utf-8'),
         )
-        os.replace(tmp, self.path)
 
     # -- keys --------------------------------------------------------------
     @property
@@ -258,7 +264,45 @@ class MerkleSigner:
         Passing `index` explicitly is allowed only for a leaf not yet used;
         reuse raises rather than silently degrading the key to forgeable.
         """
+        with self._thread_lock:
+            with state_lock(self.path) if self.path is not None else nullcontext():
+                if self.path is not None:
+                    # 🔴 A MISSING STATE FILE MUST NOT SURFACE AS FileNotFoundError.
+                    #
+                    # Reserve-before-return has to reload, so a handle carrying a
+                    # path whose file was never written used to die three frames
+                    # down inside json.loads with a raw OSError. Nothing in that
+                    # traceback says what a caller did wrong or what to do next.
+                    #
+                    # ⭐ The remedy is NOT to create the file here. `create()`
+                    # deliberately refuses to overwrite a signing key, and silently
+                    # provisioning one on an arbitrary path would defeat that.
+                    # A signer with no persisted state is legitimate -- pass
+                    # path=None -- but it is a DIFFERENT object, and a caller has
+                    # to say which one they meant.
+                    if not self.path.exists():
+                        raise SignerError(
+                            f"signing state {self.path} does not exist. One-time "
+                            "signatures reserve their leaf on disk before the "
+                            "signature is returned, so a persisted signer needs "
+                            "its state file. Use MerkleSigner.create(path) to "
+                            "provision one, or MerkleSigner(..., path=None) for "
+                            "an in-memory signer that reserves nothing."
+                        )
+                    latest = type(self).load(self.path)
+                    if latest.seed != self.seed or latest.height != self.height:
+                        raise SignerError('signing identity changed on disk')
+                    if latest.next_index < self.next_index:
+                        raise IndexReuse('signing state rolled back since this handle loaded')
+                    self.next_index = latest.next_index
+                return self._sign_reserved(message, index)
+
+    def _sign_reserved(self, message: bytes, index: int | None) -> dict:
+        if not isinstance(message, bytes):
+            raise TypeError('message must be bytes')
         idx = self.next_index if index is None else index
+        if type(idx) is not int or idx < 0:
+            raise SignerError('leaf index must be a nonnegative integer')
         if idx >= self.leaf_count:
             raise KeyExhausted(
                 f"all {self.leaf_count} one-time keys used; create a new identity"

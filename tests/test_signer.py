@@ -132,11 +132,39 @@ def test_index_persists_across_reload(tmp_path):
 
 
 def test_signing_is_deterministic_for_a_given_leaf(tmp_path):
-    p1, p2 = tmp_path / "a.json", tmp_path / "b.json"
-    a = MerkleSigner.create(p1, height=3)
-    # Same seed, same leaf -> byte-identical signature.
-    clone = MerkleSigner(seed=a.seed, height=a.height, next_index=0, path=p2)
+    """Same seed, same leaf -> byte-identical signature.
+
+    ⭐ The clone is IN-MEMORY (path=None) and that is the point, not a
+    convenience. Determinism is a property of the key derivation, not of the
+    state file. This test previously handed the clone a path that was never
+    written; once reserve-before-return started reloading state, that raised
+    from inside json.loads and the failure read as a determinism regression
+    when nothing about determinism had changed.
+
+    A persisted signer must reserve its leaf on disk before returning a
+    signature. An in-memory signer reserves nothing and is the right object
+    for asking what the crypto does.
+    """
+    a = MerkleSigner.create(tmp_path / "a.json", height=3)
+    clone = MerkleSigner(seed=a.seed, height=a.height, next_index=0, path=None)
     assert a.sign(b"x", index=0) == clone.sign(b"x", index=0)
+
+
+def test_persisted_signer_without_state_refuses_clearly(tmp_path):
+    """A missing state file is a SignerError naming the remedy, never an OSError.
+
+    Regression for 2026-09-06: the reserve-before-return fix made sign()
+    reload, and a handle whose file did not exist died with a raw
+    FileNotFoundError from three frames down. In the estate's one PUBLIC
+    tool, that is a crash a reader cannot act on.
+    """
+    ghost = MerkleSigner(seed=b"\x07" * 32, height=3, next_index=0,
+                         path=tmp_path / "never-written.json")
+    with pytest.raises(SignerError) as e:
+        ghost.sign(b"x")
+    msg = str(e.value)
+    assert "does not exist" in msg
+    assert "create(" in msg and "path=None" in msg, "the error must name both remedies"
 
 
 # --------------------------------------------------------- malformed input
