@@ -1,22 +1,15 @@
 """The identity fields must be INSIDE the bytes they describe.
 
-Found 2026-08-21 by executing an attack against the hardened tool, not by
-reading it: setting `signature_algorithm` to a garbage string and re-verifying
-returned `(True, "ATTESTED")`. `signature_algorithm` and `public_root` were in
-`_SIG_FIELDS`, so `canonical_body()` dropped them and nothing covered them.
+`signature_algorithm` and `public_root` are covered by the signed body. If
+`canonical_body()` dropped them, a report could DISPLAY one signature scheme
+while carrying another and still verify, and that displayed string is precisely
+what a counterparty reads to satisfy a contract clause. A value can be
+cryptographically correct and semantically unbound, so these tests execute the
+attack: alter each identity field and require verification to fail.
 
-A report could therefore DISPLAY "ML-DSA-65 (FIPS 204, post-quantum)" while
-carrying a hash-based signature and still verify -- and that displayed string
-is precisely what a counterparty reads to satisfy a PQC contract clause.
-
-⭐ This was the FIFTH instance of the 2026-08-20 through-line (a value
-cryptographically correct and semantically unbound), and it was living inside
-the fix written to close the other four. The mathematics was right again. The
-referent was missing again.
-
-⚠️ 228 tests passed both before and after the fix. Nothing pinned the binding,
-exactly as nothing pinned `public_root` when domain separation silently changed
-every signature the tool would ever produce. That is what these tests are for.
+Only fields that cannot be inside the thing they describe (the signature, the
+content hash, the integrity tag) are excluded from the signed body, and that
+set is pinned here.
 """
 from __future__ import annotations
 
@@ -49,11 +42,11 @@ def _signed(tmp_path, maker, target="entrovouch"):
 
 
 # ---------------------------------------------------------------------------
-# The defect itself, one test per signer.
+# The attack itself, one test per signer.
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("maker", SIGNERS, ids=lambda m: m.__name__)
 def test_swapping_the_algorithm_name_is_detected(tmp_path, maker):
-    """The exact attack. Was (True, 'ATTESTED'); must be (False, 'TAMPERED')."""
+    """The exact attack: a renamed scheme must give (False, 'TAMPERED')."""
     d = _signed(tmp_path, maker)
     root = d["public_root"]
     assert verify_report(d, expected_root=root) == (True, "ATTESTED")
@@ -98,7 +91,7 @@ def test_sig_fields_holds_only_the_self_referential_three():
 
     `_SIG_FIELDS` may contain only fields that genuinely cannot be inside the
     thing they describe. Anything else added here silently leaves a
-    reader-visible claim unauthenticated -- which is the whole defect.
+    reader-visible claim unauthenticated.
     """
     assert _SIG_FIELDS == {"signature", "content_hash", "integrity_tag"}
 
@@ -107,11 +100,10 @@ def test_sig_fields_holds_only_the_self_referential_three():
 # ...without breaking the property `findings_digest` exists to provide.
 # ---------------------------------------------------------------------------
 def test_findings_digest_is_independent_of_who_signed(tmp_path):
-    """The fix must NOT leak signer identity into the reproducible digest.
+    """Signer identity must NOT enter the reproducible digest.
 
     If it did, the same audit of the same tree would reproduce differently
-    depending on the signer, and 'clone it and compare' would stop working --
-    trading one unbound referent for a broken product claim.
+    depending on the signer, and 'clone it and compare' would stop working.
     """
     # NOTE: the same LABEL throughout. `target` is deliberately inside the
     # reproducible body -- two audits of one tree under different labels are
@@ -120,7 +112,7 @@ def test_findings_digest_is_independent_of_who_signed(tmp_path):
         audit(pathlib.Path("entrovouch"), label="org/repo@deadbeef"))
     merkle = _signed(tmp_path / "a", MerkleSigner)
 
-    # Same tree, same label, three signing situations, one digest.
+    # Same tree, same label, signed and unsigned, one digest.
     assert unsigned["findings_digest"] == merkle["findings_digest"]
 
     for name in ("signature_algorithm", "public_root"):
@@ -137,10 +129,10 @@ def test_content_hash_still_differs_per_issuance(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# The empty-subject defect: `.` is the most natural invocation there is.
+# The subject name for `.`, the most natural invocation there is.
 # ---------------------------------------------------------------------------
 def test_dot_target_does_not_produce_an_empty_subject():
-    """`Path(".").name` is "", which emptied the in-toto subject name.
+    """`Path(".").name` is "", so the target is resolved before it is named.
 
     An in-toto Statement whose subject has no name defeats the very
     interoperability the subject field was added for.
@@ -152,8 +144,8 @@ def test_dot_target_does_not_produce_an_empty_subject():
 
 
 def test_dot_target_still_leaks_no_absolute_path():
-    """The fix resolves a relative path -- prove it did not undo the 2026-07-31
-    leak fix by letting the absolute path back into the report."""
+    """Naming `.` resolves a relative path. The resolved absolute path must
+    not reach the report: only the directory's own name does."""
     d = dataclasses.asdict(audit(pathlib.Path(".")))
     here = pathlib.Path(".").resolve()
     assert d["target"] == here.name
@@ -165,13 +157,11 @@ def test_dot_target_still_leaks_no_absolute_path():
 # Reader-facing: the digests that reproduce must be ON THE PAGE.
 # ---------------------------------------------------------------------------
 def test_markdown_shows_the_digest_that_reproduces():
-    """D2/D3 landed in the data model and never reached the artifact a human
-    reads. The markdown showed ONLY `content_hash` -- the one value guaranteed
-    to differ between two honest runs -- so a reader following the obvious
-    instinct would compare it, see a mismatch, and conclude forgery.
-
-    That is not hypothetical. It is the defect found in the 2026-08-10 outreach
-    pack, and it survived the 2026-08-20 fix in the markdown renderer.
+    """The markdown a human reads must show `findings_digest` and
+    `subject_digest`, not only `content_hash`. `content_hash` is the one value
+    guaranteed to differ between two honest runs, so a reader shown only that
+    would compare it, see a mismatch, and conclude forgery. It is shown with
+    its caveat.
     """
     from entrovouch.no_egress_auditor import render_markdown
 

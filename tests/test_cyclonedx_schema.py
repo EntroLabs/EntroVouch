@@ -1,46 +1,36 @@
 """CycloneDX output validated against the OFFICIAL published schema.
 
-Until 2026-08-22 this project emitted CycloneDX 1.6 and had never once checked
-the output against the schema CycloneDX publishes. Everything that existed was
-internal: our generator, our expectations, our fixtures. **Self-consistency is
-not conformance** — the estate measured the cost of that assumption the day
-before, when a hand-rolled ML-DSA signer with every parameter correct turned out
-to accept 0 of 79 official vectors.
+A generator tested only against its own expectations and fixtures is
+self-consistent, which is not the same as conformant. These tests validate the
+tool's real CycloneDX 1.6 output against the schema CycloneDX publishes, and the
+assertion is zero schema errors on a non-empty document.
 
-⭐ **RESULT: 0 schema errors, first run** (163 components on 2026-08-22; the count drifts as
-files are added to this repo — the zero is the claim, not the count). The generator was
-right. That is worth stating plainly — the discipline is not premised on always
-finding something.
-
-🔴 **BUT THE VALIDATOR FOUND A HOLE IN THE STANDARD'S OWN SCHEMA, AND IT MATTERS**
---------------------------------------------------------------------------------
+WHAT THE SCHEMA DOES NOT CHECK
+------------------------------
 `bom-1.6.schema.json` declares:
 
     "specVersion": {"type": "string", "examples": ["1.6"]}
 
 **No `enum`. No `const`.** So a document declaring `specVersion: "9.9"` validates
-cleanly against the 1.6 schema — verified here, not assumed.
+cleanly against the 1.6 schema: verified here, not assumed.
 
-⭐ **The single field that says which specification applies is the field that
-specification's own schema does not constrain.** Passing `bom-1.6.schema.json`
+The single field that says which specification applies is the field that
+specification's own schema does not constrain. Passing `bom-1.6.schema.json`
 therefore does NOT establish that a document is CycloneDX 1.6. A consumer must
-check the version itself, and so must we — `test_spec_version_is_ours_to_check`
-below exists precisely because the external reference cannot do it.
+check the version itself, and so must we: `test_spec_version_is_ours_to_check`
+below exists because the external reference cannot do it.
 
-⚠️ **The general form, which is the reusable part: an external reference is
-NECESSARY and is not automatically SUFFICIENT.** Measured twice in two days —
-here, and in ENTROAUTH, where dropping the FIPS 204 context moved the official
-Wycheproof corpus by only 2 cases out of 210. **Adopting an external oracle is
-the beginning of the check, not the end of it.**
+The general form: an external reference is NECESSARY and is not automatically
+SUFFICIENT. Adopting an external oracle is the beginning of the check, not the
+end of it.
 
 DEPENDENCY NOTE
 ---------------
 `jsonschema` is **test-only**. ENTROVOUCH's runtime stays pure standard library,
 which is a property a reader can verify rather than a claim they must accept.
 
-⛔ And the validator is not hand-rolled, deliberately: a bespoke schema checker
-could be wrong in the same direction as the generator it checks — the same
-reasoning that made `serde_json` a test-only dependency in ENTROAUTH_RS.
+The validator is not hand-rolled, deliberately: a bespoke schema checker could
+be wrong in the same direction as the generator it checks.
 """
 from __future__ import annotations
 
@@ -69,7 +59,15 @@ SCHEMA_SHA256 = {
 jsonschema = pytest.importorskip(
     "jsonschema",
     reason="test-only dependency; pip install jsonschema. The RUNTIME stays "
-           "pure stdlib — this is not needed to use ENTROVOUCH.",
+           "pure stdlib: this is not needed to use ENTROVOUCH.",
+)
+# The CycloneDX schema refers to two other schema files, and resolving those needs the
+# `referencing` package, which jsonschema brings with it from version 4.18. An older
+# jsonschema (the one some Linux distributions package) imports fine and lacks it: skip
+# this file there, the same as when jsonschema is absent.
+pytest.importorskip(
+    "referencing",
+    reason="needs jsonschema 4.18 or newer (the `referencing` package); pip install -U jsonschema",
 )
 
 
@@ -91,10 +89,10 @@ def _bom(target: str = "."):
 
 
 def test_schema_files_are_the_ones_we_pinned():
-    """⚠️ The reference must not move without a test noticing."""
+    """The reference must not move without a test noticing."""
     for name, prefix in SCHEMA_SHA256.items():
         p = SCHEMA_DIR / name
-        assert p.is_file(), f"{name} missing — re-fetch from the CycloneDX spec repo"
+        assert p.is_file(), f"{name} missing: re-fetch from the CycloneDX spec repo"
         got = hashlib.sha256(p.read_bytes()).hexdigest()[:16]
         assert got == prefix, (
             f"{name} changed: {got} != {prefix}. If this is a deliberate schema "
@@ -126,12 +124,11 @@ def test_sbom_output_validates():
 
 
 def test_the_validator_actually_rejects_bad_documents():
-    """🔴 A validator reporting zero errors is exactly when to distrust it.
+    """A validator reporting zero errors is exactly when to distrust it.
 
     Six deliberate defects, each of which MUST be caught. Without this, a
     misconfigured resolver silently validating nothing would read as a clean
-    pass — the "instruments fail toward false alarms and false greens" pattern
-    this estate hit six times in one session.
+    pass.
     """
     v = _validator()
     base = _bom()
@@ -154,27 +151,27 @@ def test_the_validator_actually_rejects_bad_documents():
 
 
 def test_spec_version_is_ours_to_check_because_the_schema_does_not():
-    """🔴 THE FINDING. The 1.6 schema does not constrain `specVersion`.
+    """The 1.6 schema does not constrain `specVersion`.
 
-    It is declared `{"type": "string", "examples": ["1.6"]}` — no enum, no
-    const — so `specVersion: "9.9"` validates against the 1.6 schema. Asserted
+    It is declared `{"type": "string", "examples": ["1.6"]}`: no enum, no
+    const: so `specVersion: "9.9"` validates against the 1.6 schema. Asserted
     directly against the schema text, not inferred, because a claim about
     someone else's document should be checkable in one line.
 
-    ⭐ The consequence is the point: schema validation does not establish which
+    The consequence is the point: schema validation does not establish which
     specification a document follows. That check has to live here.
     """
     schema = json.loads(BOM_SCHEMA.read_text(encoding="utf-8"))
     sv = schema["properties"]["specVersion"]
     assert "enum" not in sv and "const" not in sv, (
-        "CycloneDX now constrains specVersion — good news. Update this test and "
+        "CycloneDX now constrains specVersion: good news. Update this test and "
         "the module docstring; the blind spot is closed upstream.")
 
     v = _validator()
     forged = copy.deepcopy(_bom())
     forged["specVersion"] = "9.9"
     assert not list(v.iter_errors(forged)), (
-        "the schema rejected specVersion 9.9 after all — re-read it")
+        "the schema rejected specVersion 9.9 after all: re-read it")
 
     # So we check it ourselves. This is the assertion the schema cannot make.
     assert _bom()["specVersion"] == ev.cyclonedx.SPEC_VERSION == "1.6"
@@ -183,7 +180,7 @@ def test_spec_version_is_ours_to_check_because_the_schema_does_not():
 def test_crypto_components_carry_the_fields_a_buyer_reads():
     """A CBOM whose components validate but say nothing is not an inventory.
 
-    ⚠️ Schema-valid is a floor, not a product: every optional field is optional.
+    Schema-valid is a floor, not a product: every optional field is optional.
     This asserts the fields that make the artifact useful are actually populated.
     """
     comps = [c for c in _bom()["components"] if c.get("type") == "cryptographic-asset"]
@@ -202,10 +199,8 @@ def test_bom_refs_are_unique():
 
 
 def test_a_str_target_works_because_that_is_what_the_readme_shows():
-    """🔴 Regression guard. `build_cbom(".")` raised AttributeError until
-    2026-08-22 — every in-package caller passed a Path, so no test called the
-    public API the way a stranger would. ⭐ The defect was introduced by the
-    previous day's fix for a different bug: a correction that narrowed the
-    accepted input and was invisible from inside."""
+    """`build_cbom` accepts a plain string target as well as a Path. In-package
+    callers pass a Path, so this calls the public API the way a reader copying
+    the README would."""
     assert _bom(".")["components"], "str target produced no components"
     assert ev.to_cyclonedx(dataclasses.asdict(ev.build_cbom(Path("."))))["components"]

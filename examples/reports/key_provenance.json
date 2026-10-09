@@ -1,6 +1,8 @@
 {
+  "tool": "ENTROVOUCH key-provenance detector",
+  "tool_version": "1.1.0",
   "target": "entrovouch/examples/sample_service",
-  "files_scanned": 6,
+  "files_scanned": 8,
   "findings": [
     {
       "file": "tokens.py",
@@ -17,6 +19,16 @@
       "verdict": "REVIEW"
     }
   ],
+  "files_not_parsed": [],
+  "tree_listing_digest": "18a2b08bf9bfcf85fb734aadb033121ef2bc061a10839dae1f8bd126cbba4b04",
+  "not_scanned": {
+    "skipped_directories": {},
+    "too_large": [],
+    "archives_not_opened": [],
+    "archives_not_fully_read": [],
+    "symbolic_links": 0
+  },
   "verdict": "REVIEW",
-  "scope_statement": "Detects key material that originates in the source tree rather than in secret storage: string/bytes literals assigned to key-shaped names, and MAC/KDF keys derived by hashing a literal, a module-level constant, or a function parameter (a key hashed from an argument is exactly as secret as the least secret value any call site passes, which source cannot show). Static and name-based, so it is neither complete nor authoritative: a key read from a file, an environment variable or a KMS is invisible to it (correctly), and a secret assigned to an unconventionally-named variable is missed. Every finding is REVIEW, never a verdict \u2014 whether publicly-derivable key material is a defect depends on who receives the artifact, which is not knowable from source."
+  "content_hash": "44ac5ffdb00a043f4dba8e6efe14b01fa186a169481242cfdcdcc9badf581b82",
+  "scope_statement": "Detects key material that originates in the source tree rather than in secret storage: string/bytes literals (directly or through a hex, base64 or repeat transform) bound to key-shaped names (plainly, with a type annotation, as a dataclass field default, as an attribute or configuration entry such as app.config['SECRET_KEY'], in a tuple of names, with :=, or with setattr) or to default arguments of functions and lambdas (a name bound by a for loop is not read), literal keys handed to MAC, KDF, cipher, token and JWT constructors or passed as a key-shaped keyword argument or dictionary value, a literal default for an environment variable with a key-shaped name or a literal it is set to, string literals with the published shape of a provider credential, MAC/KDF keys derived by hashing a literal, a module-level constant or a function parameter (a key hashed from an argument is exactly as secret as the least secret value any call site passes, which source cannot show), private-key files, PEM private-key armour holding a key body in any text file in the tree, this package's own signing-key files, and secrets assigned in .env and configuration files (JSON read as JSON). Static and name-based, so it is neither complete nor authoritative: a key read from a file outside the tree, an environment variable or a KMS is invisible to it (correctly), a secret assigned to an unconventionally-named variable is missed, and a password written inside a connection URL is not detected. Every finding is REVIEW, never a verdict: whether publicly-derivable key material is a defect depends on who receives the artifact, which is not knowable from source. NOTHING-FOUND means nothing came to this tool's attention in the files it read, and what it did not read (skipped directories, files over 16 MiB, what compressed archives hold, symbolic links) is listed in not_scanned; a Python file that would not parse is listed in files_not_parsed and makes the verdict REVIEW; NOT-ANALYSED means no file was read, or only archives this tool could not open."
 }

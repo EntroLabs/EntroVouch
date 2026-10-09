@@ -1,4 +1,4 @@
-"""Fixture module: reaches the network. Deliberate — this is what gets found."""
+"""Fixture module: reaches the network. Deliberate: this is what gets found."""
 import urllib.request
 import json
 

@@ -1,4 +1,4 @@
-"""SBOM from declared manifests — the CRA-shaped artifact.
+"""SBOM from declared manifests: the CRA-shaped artifact.
 
 This is not a CISA 2026-complete SBOM. The tests pin the honesty: we emit
 what we saw, we label what we did not, we do not invent a version from a range.

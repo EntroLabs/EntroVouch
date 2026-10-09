@@ -1,4 +1,4 @@
-# Fixture manifest — not a product. `stripe` is declared and never imported, so
+# Fixture manifest: not a product. `stripe` is declared and never imported, so
 # the no-egress auditor can show `declared-network-dependency` as a different
 # finding from the call site in collector.py.
 [project]

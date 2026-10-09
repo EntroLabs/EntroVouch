@@ -1,5 +1,5 @@
 """Fixture module: pure computation, no egress. The negative case matters as
-much as the positive one — an auditor that flags everything is unusable."""
+much as the positive one: an auditor that flags everything is unusable."""
 from decimal import Decimal
 
 

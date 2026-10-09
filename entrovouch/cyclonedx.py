@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ENTROVOUCH — CycloneDX 1.6 CBOM export.
+ENTROVOUCH: CycloneDX 1.6 CBOM export.
 
 WHY THIS EXISTS, AND WHY THE TIMING MATTERS
 -------------------------------------------
@@ -10,13 +10,13 @@ tooling already read.
 
 **Executive Order 14412, "Securing the Nation Against Advanced Cryptographic
 Attacks," signed 22 June 2026, directs CISA with NIST to publish the minimum
-elements for a CBOM within 270 days — approximately 19 March 2027.**
+elements for a CBOM within 270 days: approximately 19 March 2027.**
 
 A bespoke CBOM format therefore becomes non-compliant on a **known date**. This
 module is not a nicety; it is the difference between an inventory a buyer can
 submit and one they have to translate.
 
-⚠️ SCOPE, STATED RATHER THAN IMPLIED. This emits CycloneDX 1.6
+SCOPE, STATED RATHER THAN IMPLIED. This emits CycloneDX 1.6
 `cryptographic-asset` components from what the CBOM generator found. It does
 NOT claim conformance with the CISA/NIST minimum elements, **because those have
 not been published yet.** When they are, this file is where the delta lands.
@@ -39,6 +39,9 @@ import sys
 from pathlib import Path
 
 from ._version import __version__
+from .no_egress_auditor import ReportError, load_report, CBOM_TOOL
+from ._cli import missing_folder, run, uuid_urn, write_text
+from .vex import coverage_problem
 
 __all__ = ["to_cyclonedx", "SPEC_VERSION", "NIST_QUANTUM_SECURITY_LEVEL"]
 
@@ -95,7 +98,7 @@ def _component(use: dict) -> dict:
         "cryptoProperties": {
             "assetType": "algorithm",
             "algorithmProperties": {
-                "primitive": _PRIMITIVE.get(use.get("category", ""), "other"),
+                "primitive": "other" if quantum == "WEAK-RNG" else _PRIMITIVE.get(use.get("category", ""), "other"),
                 "executionEnvironment": "software-plain-ram",
                 "implementationPlatform": "generic",
                 "cryptoFunctions": ["unknown"],
@@ -169,11 +172,8 @@ def to_cyclonedx(cbom_dict: dict, serial_number: str | None = None) -> dict:
     if serial_number:
         bom["serialNumber"] = serial_number
 
-    digest = cbom_dict.get("subject_digest") or cbom_dict.get("content_hash")
-    if digest:
-        bom["metadata"]["component"]["hashes"] = [
-            {"alg": "SHA3-256", "content": digest}
-        ]
+    # (the subject digest is this tool's digest over the files it read, not a hash of any artifact, so it is carried
+    # as the `entrovouch:subjectDigest` property and not as the component's `hashes`)
     return bom
 
 
@@ -188,15 +188,25 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     try:
-        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     except Exception:
         pass
 
-    bom = to_cyclonedx(json.loads(args.cbom.read_text(encoding="utf-8")),
+    try:
+        cbom = load_report(args.cbom, kind=CBOM_TOOL)
+    except ReportError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    read_nothing = coverage_problem(cbom)
+    problem = uuid_urn(args.serial) or missing_folder(args.out, inputs=(args.cbom,)) or (f"error: {read_nothing}" if read_nothing else None)
+    if problem:
+        print(problem, file=sys.stderr)
+        return 2
+    bom = to_cyclonedx(cbom,
                        serial_number=args.serial)
     text = json.dumps(bom, indent=2)
     if args.out:
-        args.out.write_text(text, encoding="utf-8")
+        write_text(args.out, text)
         print(f"wrote {args.out} ({len(bom['components'])} cryptographic assets)")
     else:
         print(text)
@@ -204,4 +214,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run(main))

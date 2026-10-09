@@ -3,26 +3,20 @@
   "specVersion": "1.6",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-09-01T22:33:54.943636+00:00",
+    "timestamp": "2026-10-09T02:03:36.527557+00:00",
     "tools": {
       "components": [
         {
           "type": "application",
           "name": "ENTROVOUCH CBOM generator",
-          "version": "1.0.0"
+          "version": "1.1.0"
         }
       ]
     },
     "component": {
       "type": "application",
-      "name": "sample_service",
-      "bom-ref": "subject",
-      "hashes": [
-        {
-          "alg": "SHA3-256",
-          "content": "b707f8f2ed031bd9358248241bb083fbd6580388ed3b1369f5bb83a7fa38cb99"
-        }
-      ]
+      "name": "entrovouch/examples/sample_service",
+      "bom-ref": "subject"
     },
     "properties": [
       {
@@ -35,15 +29,15 @@
       },
       {
         "name": "entrovouch:scopeStatement",
-        "value": "Static analysis names the primitives a codebase REFERENCES; it cannot prove a referenced primitive is reached at runtime, cannot always infer a dynamically-computed key SIZE, and cannot see crypto behind full obfuscation. High-recall inventory + PQ-status verdict (the CBOM the migration standards ask for), NOT a proof of cryptographic soundness."
+        "value": "Static analysis of Python source names the cryptographic primitives a codebase REFERENCES; it cannot prove a referenced primitive is reached at runtime, cannot always infer a dynamically-computed key SIZE, cannot see crypto behind obfuscation, and reads no language but Python. It is an inventory of the primitives this tool knows plus a post-quantum status, NOT a proof of cryptographic soundness. NOTHING-VULNERABLE-FOUND means nothing vulnerable came to this tool's attention in the files it read; REVIEW-NEEDED means nothing was classified vulnerable or broken and at least one component (a library whose algorithm is chosen at the call, a mode, a switch) needs a person to classify it, or a Python file would not parse and is listed in files_not_parsed; NOT-ANALYSED means no file was read."
       },
       {
         "name": "entrovouch:findingsDigest",
-        "value": "c945e12617f146e65ff2ebb9bbfe96dd0f49234b419193ca507d18e1b66754b6"
+        "value": "fc18a936a7e3cea925a95002c114de271f033274437fe419a9be2d5cfc058f49"
       },
       {
         "name": "entrovouch:subjectDigest",
-        "value": "b707f8f2ed031bd9358248241bb083fbd6580388ed3b1369f5bb83a7fa38cb99"
+        "value": "d70b977bb036581a8e263ed910c249054206cf3fb0248ac3a6b5c0ce069234db"
       },
       {
         "name": "entrovouch:minimumElementsConformance",
@@ -174,52 +168,12 @@
     },
     {
       "type": "cryptographic-asset",
-      "bom-ref": "crypto/RSA private key (PEM in source)/tokens.py#58",
-      "name": "RSA private key (PEM in source)",
-      "cryptoProperties": {
-        "assetType": "algorithm",
-        "algorithmProperties": {
-          "primitive": "other",
-          "executionEnvironment": "software-plain-ram",
-          "implementationPlatform": "generic",
-          "cryptoFunctions": [
-            "unknown"
-          ],
-          "nistQuantumSecurityLevel": 0
-        },
-        "oid": ""
-      },
-      "evidence": {
-        "occurrences": [
-          {
-            "location": "tokens.py",
-            "line": 58
-          }
-        ]
-      },
-      "properties": [
-        {
-          "name": "entrovouch:quantumStatus",
-          "value": "VULNERABLE"
-        },
-        {
-          "name": "entrovouch:state",
-          "value": "deactivated"
-        },
-        {
-          "name": "entrovouch:detail",
-          "value": "-----BEGIN RSA PRIVATE KEY----- \u2014 key material present in the source tree"
-        }
-      ]
-    },
-    {
-      "type": "cryptographic-asset",
       "bom-ref": "crypto/random-MersenneTwister/tokens.py#9",
       "name": "random-MersenneTwister",
       "cryptoProperties": {
         "assetType": "algorithm",
         "algorithmProperties": {
-          "primitive": "drbg",
+          "primitive": "other",
           "executionEnvironment": "software-plain-ram",
           "implementationPlatform": "generic",
           "cryptoFunctions": [
@@ -254,8 +208,8 @@
     },
     {
       "type": "cryptographic-asset",
-      "bom-ref": "crypto/PyJWT (algorithm-dependent \u2014 see JWS alg tokens)/tokens.py#45",
-      "name": "PyJWT (algorithm-dependent \u2014 see JWS alg tokens)",
+      "bom-ref": "crypto/PyJWT (algorithm-dependent: see JWS alg tokens)/tokens.py#45",
+      "name": "PyJWT (algorithm-dependent: see JWS alg tokens)",
       "cryptoProperties": {
         "assetType": "algorithm",
         "algorithmProperties": {
@@ -528,7 +482,7 @@
         },
         {
           "name": "entrovouch:detail",
-          "value": "secrets.token_hex(...) \u2014 CSPRNG"
+          "value": "secrets.token_hex(...): CSPRNG"
         }
       ]
     },

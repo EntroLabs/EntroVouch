@@ -16,10 +16,10 @@ Then compare **one value** per report:
 
 | Report | Value to compare | Expected |
 |---|---|---|
-| `reports/egress.json` | `findings_digest` | `505e9bdfecedb54a38919dc6f710a1269bddb26019f3385c155f3bee0df6bcf2` |
-| `reports/egress.json` | `subject_digest` | `9919e0bddd5cd02013d90fbb4ad235be4d091e9053cbae2bacff42af04a3c71d` |
-| `reports/cbom.json` | `findings_digest` | `c945e12617f146e65ff2ebb9bbfe96dd0f49234b419193ca507d18e1b66754b6` |
-| `reports/sbom.json` | `findings_digest` | `f955eb1e217a7f9df1c88e70ea642b8331a8de08f4f732f3574bbaa776fbd372` |
+| `reports/egress.json` | `findings_digest` | `a91fca2e94d1dadb6b9378bcfda1d7798576c50c0eba6ce57f9e9bcb93f45097` |
+| `reports/egress.json` | `subject_digest` | `a19a74eacd9be59d4545aec928772b5e6a745c65f029969df244700c84fdc269` |
+| `reports/cbom.json` | `findings_digest` | `fc18a936a7e3cea925a95002c114de271f033274437fe419a9be2d5cfc058f49` |
+| `reports/sbom.json` | `findings_digest` | `e7601acdd796babf61abc6466501465bdd6bd6f67fc24c0030b872cbd81dfd90` |
 
 ```bash
 python -c "import json;print(json.load(open('examples/reports/egress.json'))['findings_digest'])"
@@ -35,16 +35,16 @@ them on themselves.
 `content_hash` and `scanned_at_utc` **differ on every run.** `content_hash`
 covers the issuance timestamp, so two honest runs produce two different values.
 
-> ⚠️ **This is the mistake to avoid.** A reader who compares `content_hash`, sees a
+> **This is the mistake to avoid.** A reader who compares `content_hash`, sees a
 > mismatch and concludes the report was forged has followed the most obvious instinct
 > and reached the wrong answer. **All three digests are printed on the report itself,
 > each labelled with whether it reproduces**, so the right comparison is the easy one.
 
 ## An asymmetry we would rather state than have you find
 
-**`key_provenance` emits no digest.** Its report carries findings and a scope
-statement and nothing that reproduces, so the one-value comparison above does not
-work for it — you can only re-run it and read the findings. Egress, CBOM and SBOM
+**`key_provenance` emits no findings digest.** Its report carries findings, a scope
+statement and a content hash that shows an edit, and it is not signed, so the one-value
+comparison above does not work for it: re-run it and read the findings. Egress, CBOM and SBOM
 carry `findings_digest`. This is pinned in `tests/test_examples_reproduce.py` so it
 cannot silently become true of another tool without someone noticing.
 
@@ -60,12 +60,12 @@ nothing:
 
 | File | Contains | Found by |
 |---|---|---|
-| `collector.py` | a real network import and an outbound POST | no-egress auditor (`network-import`) |
+| `collector.py` | a network import, a request built for a URL held in a constant, and the send | no-egress auditor: `network-import` (line 2) and `network-target` (line 10, where the request is built). The send at line 12 is handed the request object, not an address, so it has no finding of its own: the import reports it |
 | `pyproject.toml` | `stripe` declared, never imported | no-egress auditor (`declared-network-dependency`) |
-| `urls.py` | `from urllib.parse import urlparse` | **nothing — parse is not a socket** |
-| `motor.py` + `drive.py` | local module named `motor` | **not a network-import; name in `shadowed_imports`** |
-| `pricing.py` | pure computation, no egress | **nothing — the negative case** |
-| `tokens.py` | MD5, `random`, in-source HMAC key, JWT RS256, pyca `hashes.MD5()`, PEM armour | CBOM, key provenance |
+| `urls.py` | `from urllib.parse import urlparse` | **nothing: parse is not a socket** |
+| `motor.py` + `drive.py` | local module named `motor` | **not a network-import; name in `shadowed_imports`** (when `sample_service` is the audited tree; audit a folder above it and `motor.py` is no longer at the top, so `import motor` is reported) |
+| `pricing.py` | pure computation, no egress | **nothing: the negative case** |
+| `tokens.py` | MD5, `random`, in-source HMAC key, JWT RS256, pyca `hashes.MD5()`, and PEM armour with no key inside | CBOM, key provenance. The armour is **not** reported: armour counts only when a key body follows it |
 
 `pricing.py`, `urls.py` and the local `motor` module matter as much as the hits.
 **An auditor that flags everything is not strict, it is unusable**, and the
@@ -73,7 +73,7 @@ committed reports show it staying quiet where it should.
 
 ## Hand this to a prospect
 
-No account. No upload. No install.
+No account. No upload. The tools need nothing installed; the test suite needs `pytest`.
 
 ```bash
 git clone https://github.com/EntroLabs/EntroVouch
@@ -88,7 +88,7 @@ their machine produced exactly what we published.
 
 What they are looking at is limited assurance: nothing came to our attention,
 not a proof of absence. Independent issuance of that same report is the paid
-layer — same tool, a third party on the signature.
+layer: same tool, a third party on the signature.
 
 ## What a clean report does and does not mean
 

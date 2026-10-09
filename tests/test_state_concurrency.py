@@ -1,4 +1,4 @@
-"""Offline regression for one-time leaf reuse across stale handles/processes."""
+"""A one-time leaf is never reused across stale handles or concurrent processes."""
 import multiprocessing
 import tempfile
 import unittest

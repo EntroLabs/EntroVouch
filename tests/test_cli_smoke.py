@@ -2,12 +2,10 @@
 
 WHY THIS FILE EXISTS
 --------------------
-On 2026-08-19 `python -m entrovouch.no_egress_auditor <dir>` — the first command
-the README shows — crashed with UnicodeEncodeError on a Windows cp1252 console,
-while **146 tests passed**. The tests never caught it because they call the
-functions directly; nothing in the suite went through a console encoder. The
-defect lived in the gap between "the library works" and "the documented command
-works", and only running the documented command could see it.
+Tests that call the functions directly never go through a console encoder, so
+they cannot see a command that raises UnicodeEncodeError on a Windows cp1252
+console. There is a gap between "the library works" and "the documented command
+works", and only running the documented command covers it.
 
 So these tests spawn a real subprocess with a deliberately hostile stdout
 encoding, and assert the two things a first-time user actually experiences:
@@ -59,15 +57,15 @@ def test_documented_cli_does_not_crash_on_a_cp1252_console(module):
 def test_the_shipped_package_passes_its_own_audit():
     """The README invites the reader to do exactly this. It must come back clean.
 
-    SCOPED TO `entrovouch/`, THE SHIPPED PACKAGE - changed 2026-08-30 when
-    `examples/sample_service/` was added. That fixture contains a real network
-    import ON PURPOSE, so a repo-root audit now finds it and correctly exits 1.
+    SCOPED TO `entrovouch/`, THE SHIPPED PACKAGE. `examples/sample_service/`
+    contains a real network import ON PURPOSE, so a repo-root audit finds it and
+    correctly exits 1.
 
-    The tempting fix was to teach the auditor to skip `examples/`. Rejected: a
-    scanner with a built-in blind spot for one directory is exactly the hidden
-    exemption this package argues against, and it would have made the tool lie
-    about any tree that happened to contain that path. Scope the CLAIM instead of
-    blinding the instrument - and pin the fixture separately, below.
+    The auditor is not taught to skip `examples/`: a scanner with a built-in
+    blind spot for one directory is exactly the hidden exemption this package
+    argues against, and it would misreport any tree that happened to contain
+    that path. The CLAIM is scoped instead of the instrument being blinded, and
+    the fixture is pinned separately, below.
     """
     r = _run("entrovouch.no_egress_auditor", str(REPO / "entrovouch"))
     assert r.returncode == 0, (
@@ -92,13 +90,27 @@ def test_the_only_egress_in_this_repo_is_the_deliberate_fixture():
         "contain a deliberate network import - if it no longer does, the demo in "
         "examples/ is showing a reader nothing."
     )
+    # Two places hold code that reaches for the network on purpose: the demo tree, and the small
+    # programs the runtime check runs against a closed loopback port. Both are named here.
+    # A third place is named for a different reason: the pipeline file installs the test tools,
+    # which is a command that reaches the network. Only that command is allowed there.
+    rows = [line for line in r.stdout.splitlines() if line.startswith("| `")]
+    pipeline = [line for line in rows if line.startswith("| `.github/workflows/")]
+    assert pipeline and all("pip install" in line for line in pipeline), (
+        "the pipeline file may install the test tools and do nothing else on the network: "
+        + " || ".join(pipeline))
+    # A fourth: the one test helper that makes Windows junctions, through `_winapi`. Only that import is allowed there.
+    junction = [line for line in rows if line.startswith("| `tests/_junction.py`")]
+    assert junction and all("native-call" in line and "_winapi" in line for line in junction), (
+        "tests/_junction.py may import _winapi to make junctions and do nothing else: " + " || ".join(junction))
     offenders = [
-        line for line in r.stdout.splitlines()
-        if line.startswith("| `") and "examples" not in line
+        line for line in rows
+        if not line.startswith(("| `examples/", "| `tests/oracle_programs/", "| `.github/workflows/",
+                                "| `tests/_junction.py`"))
     ]
     assert not offenders, (
-        "egress found OUTSIDE examples/ - a real finding in the shipped package "
-        "or the test suite, not the fixture: " + " || ".join(offenders)
+        "egress found OUTSIDE examples/ and tests/oracle_programs/ - a real finding in the "
+        "shipped package or the test suite, not a fixture: " + " || ".join(offenders)
     )
 
 

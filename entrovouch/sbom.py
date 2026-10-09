@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ENTROVOUCH — Software Bill of Materials from declared manifests.
+ENTROVOUCH: Software Bill of Materials from declared manifests.
 
 A CycloneDX 1.6 SBOM of the dependencies the tree *declares*, not of the
 binaries it would produce. The EU CRA (Annex I Part II(1)) asks for an SBOM
@@ -37,19 +37,22 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import _reads
+from ._cli import missing_folder, run, uuid_urn, write_text
 from ._version import __version__
 from .manifests import (
-    DeclaredDep, collect_declared_deps, pep503_name,
+    DeclaredDep, _requirement_remote, collect_manifests, pep503_name,
     pinned_npm_version, pinned_pypi_version,
 )
 from .no_egress_auditor import (
-    _DEFAULT_COVENANT, _file_digest, _sign, _subject_name,
-    _tree_digest, canonical_body, reproducible_body,
+    _file_digest, _sign, _subject_name,
+    _tree_digest, canonical_body, markdown_cell, markdown_code, reproducible_body, verify_report,
 )
 from .signer import UNSIGNED, MerkleSigner, SignerError
 
@@ -62,12 +65,15 @@ _GENERATION_CONTEXT = "pre-build"
 
 _SCOPE = (
     "Software Bill of Materials from declared top-level dependencies in "
-    "pyproject.toml, requirements*.txt, setup.cfg and package.json. "
+    "pyproject.toml (PEP 621 and Poetry), requirement files, setup.cfg, setup.py, "
+    "Pipfile, conda environment files and package.json. Development groups, build "
+    "requirements and npm devDependencies are declared but are not product "
+    "dependencies, and are left out. "
     "Generation context: pre-build (source manifests). Transitive "
     "dependencies are NOT enumerated. Component hashes of executable "
-    "artifacts are UNKNOWN — this tool does not see a build. Licenses and "
+    "artifacts are UNKNOWN: this tool does not see a build. Licenses and "
     "component producers are UNKNOWN unless present in the declaration, "
-    "which they almost never are. npm devDependencies are omitted. "
+    "which they almost never are. "
     "package-lock.json / poetry.lock / uv.lock are not read (a lockfile is "
     "a resolved graph; this pass is the declaration). CISA 2026 Minimum "
     "Elements conformance is NOT CLAIMED. Unknown fields are labelled "
@@ -99,14 +105,14 @@ class SBOM:
     target: str = ""
     scanned_at_utc: str = ""
     files_scanned: int = 0
-    verdict: str = "DECLARED"   # DECLARED | EMPTY
+    verdict: str = "DECLARED"   # DECLARED | EMPTY | INCOMPLETE
     components: list = field(default_factory=list)
     unknown_fields: list = field(default_factory=list)
     generation_context: str = _GENERATION_CONTEXT
     coverage: str = "top-level-declared-only"
     scope_statement: str = _SCOPE
     cisa_2026_conformance: str = (
-        "NOT CLAIMED — source-manifest SBOM; component hashes, transitive "
+        "NOT CLAIMED: source-manifest SBOM; component hashes, transitive "
         "coverage and licenses are labelled unknown rather than filled"
     )
     subject: list = field(default_factory=list)
@@ -120,27 +126,91 @@ class SBOM:
 
 
 def _purl(dep: DeclaredDep, version: str) -> str:
+    # Installed from a URL or a repository, not from the index: a `pkg:pypi/...` name would point a scanner at
+    # whatever package of that name the public index holds, which may be someone else's (dependency confusion).
+    if dep.source:
+        return ""                  # installed from git, a URL, a path, another index or the workspace
+    remote = _requirement_remote(dep.spec) if dep.ecosystem == "pypi" else None
+    if remote and remote[0] in ("vcs-requirement", "url-requirement"):
+        return ""
+    if dep.ecosystem == "pypi" and re.search(r"@\s*file:", dep.spec, re.IGNORECASE):
+        return ""                  # a local file or folder, not the index
     if dep.ecosystem == "npm":
         name = dep.name
+        if ":" in _npm_requested(dep) or "/" in _npm_requested(dep):
+            return ""              # a file, a link, a repository, a URL or an alias: not this name on the registry
         # CycloneDX / package-url: scoped packages are %40scope/name
         if name.startswith("@") and "/" in name:
             scope, pkg = name[1:].split("/", 1)
-            base = f"pkg:npm/%40{scope}/{pkg}"
+            base = f"pkg:npm/%40{scope.lower()}/{pkg.lower()}"     # the package-url rule for npm: lowercased
         else:
-            base = f"pkg:npm/{name}"
-        return f"{base}@{version}" if version else base
+            base = f"pkg:npm/{name.lower()}"
+        return f"{base}@{_purl_version(version)}" if version else base
     n = pep503_name(dep.name)
-    base = f"pkg:pypi/{n}"
-    return f"{base}@{version}" if version else base
+    if dep.ecosystem == "conda":
+        return f"pkg:conda/{n}@{_purl_version(version)}" if version else f"pkg:conda/{n}"
+    # the package-url rule for PyPI: lowercased, `_` written as `-` (a `.` stays: `pkg:pypi/zope.interface`)
+    base = f"pkg:pypi/{dep.name.strip().lower().replace('_', '-')}"
+    return f"{base}@{_purl_version(pep440_normal(version))}" if version else base
+
+
+# A version as PEP 440 lets it be written (its appendix's pattern): epoch, release, pre-release, post-release,
+# development release and local label, each in any of the spellings PEP 440 accepts.
+_PEP440_RE = re.compile(r"""
+    v?
+    (?:(?P<epoch>[0-9]+)!)?
+    (?P<release>[0-9]+(?:\.[0-9]+)*)
+    (?P<pre>[-_.]?(?P<pre_l>alpha|a|beta|b|preview|pre|c|rc)[-_.]?(?P<pre_n>[0-9]+)?)?
+    (?P<post>(?:-(?P<post_n1>[0-9]+))|(?:[-_.]?(?P<post_l>post|rev|r)[-_.]?(?P<post_n2>[0-9]+)?))?
+    (?P<dev>[-_.]?(?P<dev_l>dev)[-_.]?(?P<dev_n>[0-9]+)?)?
+    (?:\+(?P<local>[a-z0-9]+(?:[-_.][a-z0-9]+)*))?
+    """, re.VERBOSE)
+_PEP440_PRE = {"alpha": "a", "a": "a", "beta": "b", "b": "b", "preview": "rc", "pre": "rc", "c": "rc", "rc": "rc"}
+
+
+def pep440_normal(version: str) -> str:
+    """The normal form PEP 440 gives a version for comparison and lookup: lower case, no `v` prefix, no leading zeros
+    (`01.0` is `1.0`), and every other spelling it accepts written its one way (`1.0alpha1` is `1.0a1`, `1.0c1` is
+    `1.0rc1`, `1.0-1` and `1.0_post1` are `1.0.post1`, `1.0-dev` is `1.0.dev0`, `1.0+Ubuntu-1` is `1.0+ubuntu.1`).
+    A version PEP 440 does not accept is kept as written, apart from its case, a `v` prefix and leading zeros."""
+    v = version.strip().lower()
+    m = _PEP440_RE.fullmatch(v)
+    if m is None:
+        v = v[1:] if v[:1] == "v" and v[1:2].isdigit() else v
+        m = re.match(r"([\d.]*)(.*)", v, re.S)
+        release, rest = m.group(1), m.group(2)
+        if release:
+            release = ".".join(str(int(p)) if p.isdigit() else p for p in release.split("."))
+        return release + rest
+    out = f"{int(m.group('epoch'))}!" if m.group("epoch") and int(m.group("epoch")) else ""
+    out += ".".join(str(int(p)) for p in m.group("release").split("."))
+    if m.group("pre"):
+        out += _PEP440_PRE[m.group("pre_l")] + str(int(m.group("pre_n") or 0))
+    if m.group("post"):
+        out += ".post" + str(int(m.group("post_n1") or m.group("post_n2") or 0))
+    if m.group("dev"):
+        out += ".dev" + str(int(m.group("dev_n") or 0))
+    if m.group("local"):
+        out += "+" + ".".join(str(int(p)) if p.isdigit() else p for p in re.split(r"[-_.]", m.group("local")))
+    return out
+
+
+def _purl_version(version: str) -> str:
+    """A version as package-url writes it: characters outside the unreserved set percent-encoded (`+local` is
+    `%2Blocal`)."""
+    from urllib.parse import quote
+    return quote(version, safe="-._~")
+
+
+def _npm_requested(dep: DeclaredDep) -> str:
+    """What package.json asks for: "axios@1.6.0" or "@scope/pkg@1.6.0" -> the text after the name and its @."""
+    prefix = dep.name + "@"
+    return dep.spec[len(prefix):] if dep.spec.startswith(prefix) else ""
 
 
 def _version_of(dep: DeclaredDep) -> str:
     if dep.ecosystem == "npm":
-        # "axios@1.6.0" or "@scope/pkg@1.6.0" — version is after the last @
-        ver = dep.spec.rsplit("@", 1)[-1] if dep.spec.count("@") else ""
-        if ver == dep.spec:  # no @version
-            ver = ""
-        return pinned_npm_version(ver) or ""
+        return pinned_npm_version(_npm_requested(dep)) or ""
     return pinned_pypi_version(dep.spec) or ""
 
 
@@ -163,16 +233,37 @@ def _component(dep: DeclaredDep) -> SbomComponent:
     )
 
 
-def build_sbom(target: Path | str, covenant_text: str = _DEFAULT_COVENANT,
+def build_sbom(target: Path | str,
                signer: "MerkleSigner | None" = None,
                label: str | None = None) -> SBOM:
+    """The declared-dependency inventory of `target`. Each manifest is read as one version for the whole run, so
+    the components and the subject digest describe the same bytes. A target that is not a folder is refused: an
+    inventory of nothing would read as a tree that declares nothing."""
+    if not Path(target).is_dir():
+        raise NotADirectoryError(f"{target} is not a directory")
+    with _reads.one_read_per_file():
+        return _build_sbom(target, signer, label)
+
+
+def _build_sbom(target: Path | str,
+                signer: "MerkleSigner | None" = None,
+                label: str | None = None) -> SBOM:
     target = Path(target)
-    deps, errors, files = collect_declared_deps(target)
+    scan = collect_manifests(target)
+    deps, errors, files = scan.deps, scan.errors, scan.files
     tree = [(rel, _file_digest(p)) for p, rel in files]
 
-    comps = [_component(d) for d in deps]
+    # Development groups and build requirements are declared, and are not part of the
+    # product: the inventory lists what the product depends on. Stated in the scope.
+    comps = [_component(d) for d in deps if d.scope not in ("dev", "build", "constraint")]   # a constraint adds nothing
+    # One declaration read twice (a package.json naming a package under both `peerDependencies` and
+    # `optionalDependencies`) is one component
+    unique: dict = {}
+    for c in comps:
+        unique.setdefault(tuple(sorted(asdict(c).items())), c)
+    comps = list(unique.values())
     # Stable order: ecosystem, name, file, line.
-    comps.sort(key=lambda c: (c.ecosystem, c.name.lower(), c.file, c.line))
+    comps.sort(key=lambda c: (c.ecosystem, c.name.lower(), c.file.encode("utf-8", "backslashreplace"), c.line, c.spec))
 
     unknowns = [
         "component-hash (no executable artifact)",
@@ -182,6 +273,9 @@ def build_sbom(target: Path | str, covenant_text: str = _DEFAULT_COVENANT,
     ]
     if any(c.version_status == "unknown" for c in comps):
         unknowns.append("component-version (declared as a range, not a pin)")
+    # a requirement given only as a path names no package here: listed, not left out
+    unknowns += [f"{rel}:{line} installs {path} from {'an address' if '://' in path else 'a path'}: its name and version "
+                 "are that project's, not declared here" for rel, line, path in scan.paths]
 
     rep = SBOM(
         target=label or _subject_name(target),
@@ -194,8 +288,10 @@ def build_sbom(target: Path | str, covenant_text: str = _DEFAULT_COVENANT,
     if errors:
         # Parse failures are coverage gaps. Recorded, not silent.
         rep.unknown_fields.append(
-            "unparseable-manifest: " + "; ".join(e.detail for e in errors)
+            "unparseable-manifest: " + "; ".join(f"{e.file}: {e.detail}" for e in errors)
         )
+        # a manifest that could not be read or parsed may declare what the inventory does not list
+        rep.verdict = "INCOMPLETE"
 
     rep.subject_digest = _tree_digest(tree)
     rep.subject = [{"name": rep.target, "digest": {"sha3-256": rep.subject_digest}}]
@@ -204,7 +300,7 @@ def build_sbom(target: Path | str, covenant_text: str = _DEFAULT_COVENANT,
     if signer is not None:
         rep.signature_algorithm = signer.algorithm
         rep.public_root = signer.public_root
-    ch, tag = _sign(asdict(rep), covenant_text)
+    ch, tag = _sign(asdict(rep))
     rep.content_hash = ch
     rep.integrity_tag = tag
     if signer is not None:
@@ -219,14 +315,17 @@ def build_sbom(target: Path | str, covenant_text: str = _DEFAULT_COVENANT,
 def to_cyclonedx(sbom_dict: dict, serial_number: str | None = None) -> dict:
     """CycloneDX 1.6 software BOM. Not a CBOM."""
     components = []
+    refs: dict[str, int] = {}
     for c in sbom_dict.get("components") or []:
         name = c.get("name") or "unknown"
         ref = f"pkg/{c.get('ecosystem','pypi')}/{name}#{c.get('file','')}:{c.get('line', 0)}"
+        refs[ref] = refs.get(ref, 0) + 1
+        if refs[ref] > 1:
+            ref += f"~{refs[ref]}"     # a bom-ref names one component: a second listing at one place gets its own
         comp: dict = {
             "type": "library",
             "bom-ref": ref.replace("\\", "/"),
             "name": name,
-            "purl": c.get("purl") or "",
             "scope": "optional" if c.get("scope") == "optional" else "required",
             "properties": [
                 {"name": "entrovouch:declaredSpec", "value": str(c.get("spec", ""))},
@@ -239,6 +338,8 @@ def to_cyclonedx(sbom_dict: dict, serial_number: str | None = None) -> dict:
                 {"name": "entrovouch:unknownKind", "value": "unknown-to-author"},
             ],
         }
+        if c.get("purl"):
+            comp["purl"] = c["purl"]
         if c.get("version"):
             comp["version"] = c["version"]
         if c.get("extra"):
@@ -289,33 +390,36 @@ def to_cyclonedx(sbom_dict: dict, serial_number: str | None = None) -> dict:
     }
     if serial_number:
         bom["serialNumber"] = serial_number
-    digest = sbom_dict.get("subject_digest") or sbom_dict.get("content_hash")
-    if digest:
-        bom["metadata"]["component"]["hashes"] = [
-            {"alg": "SHA3-256", "content": digest}
-        ]
+    # (the subject digest is this tool's digest over the files it read, not a hash of any artifact: it is carried as
+    # the `entrovouch:subjectDigest` property above, never as the component's `hashes`)
     return bom
+
+
+def verify_sbom(report_dict: dict, expected_root: str | None = None) -> tuple[bool, str]:
+    """Verify an SBOM. Returns `(ok, status)` with the same four statuses as `verify_report`:
+    ATTESTED / UNVERIFIED / UNSIGNED / TAMPERED. A report of another kind is TAMPERED here."""
+    return verify_report(report_dict, expected_root=expected_root, expected_tool="ENTROVOUCH SBOM")
 
 
 def render_markdown(rep: SBOM) -> str:
     lines = [
-        f"# ENTROVOUCH SBOM — {rep.verdict}",
+        f"# ENTROVOUCH SBOM: {rep.verdict}",
         "",
-        f"- **Target:** `{rep.target}`",
+        f"- **Target:** {markdown_code(rep.target, in_table=False)}",
         f"- **Scanned:** {rep.scanned_at_utc}",
         f"- **Manifests read:** {rep.files_scanned}",
         f"- **Declared components:** {len(rep.components)}",
         f"- **Generation context:** `{rep.generation_context}` (source manifests, before build)",
         f"- **Coverage:** `{rep.coverage}`",
         f"- **CISA 2026 minimum elements:** {rep.cisa_2026_conformance}",
-        f"- **Findings digest (reproduces):** `{rep.findings_digest[:32]}…`",
-        f"- **Subject digest (binds the manifests):** `{rep.subject_digest[:32]}…`",
+        f"- **Findings digest (reproduces):** `{rep.findings_digest}`",
+        f"- **Subject digest (binds the manifests):** `{rep.subject_digest}`",
         f"- **Content hash (this issuance only, does NOT reproduce):** "
         f"`{rep.content_hash[:32]}…`",
     ]
     if rep.signature:
         lines += [
-            f"- **Signed by:** `{rep.public_root[:32]}…` ({rep.signature_algorithm})",
+            f"- **Signed by:** `{rep.public_root}` ({rep.signature_algorithm})",
         ]
     else:
         lines += [f"- **Signature:** {UNSIGNED}"]
@@ -323,7 +427,7 @@ def render_markdown(rep: SBOM) -> str:
         "",
         f"> **Scope:** {rep.scope_statement}",
         "",
-        "**Unknown (not withheld):** " + "; ".join(rep.unknown_fields),
+        "**Unknown (not withheld):** " + "; ".join(markdown_cell(u, in_table=False) for u in rep.unknown_fields),
         "",
     ]
     if rep.components:
@@ -336,25 +440,23 @@ def render_markdown(rep: SBOM) -> str:
         for c in rep.components:
             ver = c.get("version") or "unknown"
             lines.append(
-                f"| `{c['name']}` | {c['ecosystem']} | `{ver}` | {c['scope']} | "
-                f"`{c['file']}` | `{c['spec']}` |"
+                f"| {markdown_code(c['name'])} | {c['ecosystem']} | {markdown_code(ver)} | {c['scope']} | "
+                f"{markdown_code(c['file'])} | {markdown_code(c['spec'])} |"
             )
     else:
         lines.append("**No declared dependencies in the manifests this tool reads.**")
-    lines += ["", "*ENTROVOUCH SBOM — declared top-level only. For the People.*"]
+    lines += ["", "*ENTROVOUCH SBOM: declared top-level only. For the People.*"]
     return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        description="ENTROVOUCH SBOM — CycloneDX 1.6 from declared manifests")
+        description="ENTROVOUCH SBOM: CycloneDX 1.6 from declared manifests")
     ap.add_argument("target", type=Path, help="directory to inventory")
     ap.add_argument("--json", type=Path, default=None, help="write ENTROVOUCH JSON")
     ap.add_argument("--md", type=Path, default=None, help="write markdown")
     ap.add_argument("--cdx", type=Path, default=None,
                     help="write CycloneDX 1.6 JSON (the CRA-shaped artifact)")
-    ap.add_argument("--covenant", type=Path, default=None,
-                    help="IGNORED (kept so old invocations do not crash).")
     ap.add_argument("--key", type=Path, default=None,
                     help="signing identity. WITHOUT THIS THE SBOM IS UNSIGNED.")
     ap.add_argument("--label", default=None,
@@ -363,28 +465,35 @@ def main(argv: list[str] | None = None) -> int:
                     help="CycloneDX serial number (urn:uuid:...). Omitted if unset.")
     args = ap.parse_args(argv)
     try:
-        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     except Exception:
         pass
     if not args.target.is_dir():
         print(f"error: {args.target} is not a directory", file=sys.stderr)
         return 2
-    cov = args.covenant.read_text(encoding="utf-8") if args.covenant else _DEFAULT_COVENANT
+    if args.key and not args.key.is_file():
+        what = "is a folder, not a key file" if args.key.is_dir() else "does not exist"
+        print(f"error: signing key {args.key} {what}", file=sys.stderr)
+        return 2
+    problem = missing_folder(args.json, args.md, args.cdx, key=args.key, tree=args.target) or uuid_urn(args.serial)
+    if problem:
+        print(problem, file=sys.stderr)
+        return 2
     signer = MerkleSigner.load(args.key) if args.key else None
     if signer is None:
         print("warning: no --key given; SBOM will be UNSIGNED", file=sys.stderr)
-    rep = build_sbom(args.target, cov, signer=signer, label=args.label)
+    rep = build_sbom(args.target, signer=signer, label=args.label)
     payload = asdict(rep)
     if args.json:
-        args.json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        write_text(args.json, json.dumps(payload, indent=2))
     if args.md:
-        args.md.write_text(render_markdown(rep), encoding="utf-8")
+        write_text(args.md, render_markdown(rep))
     if args.cdx:
         cdx = to_cyclonedx(payload, serial_number=args.serial)
-        args.cdx.write_text(json.dumps(cdx, indent=2), encoding="utf-8")
+        write_text(args.cdx, json.dumps(cdx, indent=2))
     print(render_markdown(rep))
-    return 0
+    return 1 if rep.verdict == "INCOMPLETE" else 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run(main))

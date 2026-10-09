@@ -1,29 +1,24 @@
 # ENTROVOUCH
 
-**Audit what a codebase actually does, and sign the result.**
+Audit what a codebase does, and sign the result.
 
-Four tools. Pure Python standard library, no dependencies, no network access of their own.
+Four tools in pure Python, with no dependencies. None of them opens a network connection.
 
-| Tool | Answers |
+| Tool | Question it answers |
 |---|---|
-| **`no_egress_auditor`** | *Does this code talk to the outside world, and where?* |
-| **`cbom`** | *What cryptography does it use, and is any of it quantum-vulnerable?* |
-| **`key_provenance`** | *Where does a signing key come from: secret storage, or this source tree?* |
-| **`sbom`** | *What dependencies does this tree declare?* |
+| `no_egress_auditor` | Does this code talk to the outside world, and where? |
+| `cbom` | What cryptography does its Python use, and is any of it quantum-vulnerable? |
+| `key_provenance` | Does a key or credential come from secret storage, or is it written into the tree? |
+| `sbom` | What dependencies does the tree declare? |
 
-Point this at a tree. It tells you whether the *capability* to talk to the network is in
-the source, and it signs that answer. **`CLEAN` means nothing came to our attention, not
-that nothing is there.** You do not have to trust the issuer: re-run the tool and compare
-one value. With the publisher's root pinned, you can also confirm *who* issued it.
+Anyone can check a report without trusting us: run the same tool on the same tree and compare one value, the
+findings digest. With the publisher's public root pinned, you can also confirm who issued a signed report.
 
-**→ [Verify our output yourself](examples/README.md)** — a fixture tree, the reports we
-generated from it, and the command that regenerates them. No account, no upload, no
-network call.
+A `CLEAN` result means nothing came to our attention in the files the tool read. It does not mean nothing is there;
+[What a result means](#what-a-result-means) explains why.
 
-A vendor questionnaire asks what your system does. *"We have a policy"* is a weaker
-answer than *"here is a signed audit; regenerate it yourself."*
-
----
+[Verify our output yourself](examples/README.md): a fixture tree, the reports generated from it, and the command
+that regenerates them. No account, no upload, no network call.
 
 ## Try it
 
@@ -33,39 +28,23 @@ cd EntroVouch
 python -m entrovouch.no_egress_auditor examples/sample_service --label entrovouch/examples/sample_service
 ```
 
-Then compare **`findings_digest`** to the table in [examples/README.md](examples/README.md).
-That is the whole pitch.
+Compare the `findings_digest` it prints with the table in [examples/README.md](examples/README.md).
 
-**`--label` is not decoration.** It names the subject *inside* the signed body, so it is
-covered by `findings_digest` — a digest that ignored what was audited would read the same
-for two different trees. Pass ours to reproduce our value; pass your own
-(`org/repo@commit`) when you audit your own code, and expect a different digest, because
-it is a different claim. Omitting it is not an error: the report then names the directory
-(`sample_service`) and yields a different, equally valid digest that will not match our
-table.
+The label names what was audited and is covered by the digest: pass ours to reproduce our value, and your own
+(`org/repo@commit`) for your own code.
 
-Python 3.14 and some earlier versions print a `RuntimeWarning` from `runpy` before the
-report. It is expected and cosmetic — this package imports its own modules eagerly on
-purpose, because the alternative (`importlib.import_module`) is dynamic import, which this
-very auditor flags as `dynamic-exec`. The trade is recorded in `entrovouch/__init__.py`:
-we would rather print a warning than ship a tool that cannot pass its own audit.
-
-Python 3.10+. No runtime dependencies. If you want to check our work:
+The tools need Python 3.11 or later and nothing else. The test suite needs `pytest`:
 
 ```bash
-python -m pytest -q      # 389 tests, no installs, exit 0
+python -m pytest -q      # 3186 tests, pytest only, exit 0
 ```
 
-A clean clone runs **389** tests with nothing installed and exits 0. **19** more need
-optional extras (`hypothesis`, `jsonschema`) and *skip* without them rather than failing.
-Run `pip install -e .[test]`, then re-run for **408**. Both counts are asserted by a
-test, not maintained by hand. A `pip install` between a sceptical reader and reproducing
-our results would undercut the only claim this package makes.
+Some tests skip where the machine lacks something (`jsonschema`, or the right to create symbolic links on Windows).
+27 more need the optional extras: run `pip install -e .[test]`, then re-run for **3213**. A test asserts both counts.
 
-Scanning *this* repository: the shipped package (`entrovouch/`) audits CLEAN;
-`examples/` is a deliberate hit so the demo is not empty; `cbom` self-hits on its own
-search strings (`DES` in the file that searches for DES). The auditor is not taught to
-skip `examples/`. Scope the claim, never blind the instrument.
+The shipped package, `entrovouch/`, audits `CLEAN`. The demo tree, the test programs and the test workflow produce
+findings on purpose, and `cbom` and `key_provenance` report the package's own search strings. The auditor has no
+rule that skips this repository's folders.
 
 ## Use
 
@@ -74,181 +53,156 @@ python -m entrovouch.no_egress_auditor /path/to/project
 python -m entrovouch.cbom /path/to/project
 python -m entrovouch.key_provenance /path/to/project
 python -m entrovouch.sbom /path/to/project --cdx bom.cdx.json
+python -m entrovouch.verify report.json --root <the issuer's public root>
 ```
 
-Each scanner prints a markdown report. `key_provenance` reports `REVIEW` rather than a
-verdict: whether publicly-derivable key material is a defect depends on who receives the
-artifact, which source cannot tell you.
+Each scanner takes a directory, prints a markdown report, writes JSON with `--json` and markdown with `--md`, and
+takes `--label`.
 
-`sbom` is the inventory [Regulation (EU) 2024/2847](https://eur-lex.europa.eu/eli/reg/2024/2847/oj)
-(the Cyber Resilience Act) Annex I Part II(1) asks for: a software bill of materials in a
-commonly used machine-readable format covering at least the top-level dependencies. It
-emits CycloneDX 1.6 from what the tree *declares*. Pre-build, top-level only. It does not
-hash a built artifact, does not walk transitives, and does not claim CISA 2026
-minimum-element conformance — those gaps are labelled `unknown` in the document. The
-SBOM obligation itself applies **11 December 2027**. This command is the inventory, not
-incident reporting.
+- `no_egress_auditor` reports imports, calls, commands and declared dependencies that can reach the network, in
+  Python, JavaScript, scripts, Dockerfiles, Makefiles, CI pipelines, web pages and package manifests.
+- `cbom` lists the cryptography the Python code uses, by library, call and algorithm name, and marks what a quantum
+  computer would break. `REVIEW-NEEDED` means something it found needs a person to classify it.
+- `key_provenance` looks for key material and credentials written into the tree, in code, key files, `.env` and
+  configuration files, notebooks and archives. Its verdict is always `REVIEW`: whether a key in the tree is a defect
+  depends on who receives the artifact.
+- `sbom` writes a CycloneDX 1.6 inventory of the dependencies the tree declares, top level only and before any build.
+  That is the inventory the EU Cyber Resilience Act
+  ([Regulation (EU) 2024/2847](https://eur-lex.europa.eu/eli/reg/2024/2847/oj), Annex I Part II(1)) asks for from
+  11 December 2027.
+
+What each tool reads and reports: [docs/TOOLS.md](docs/TOOLS.md). How `no_egress_auditor` reads each kind of file,
+and what it lists as not read: [docs/WHAT_IS_READ.md](docs/WHAT_IS_READ.md).
 
 ### Adapters
 
-Same findings, in formats other tools already ingest. What each name actually claims is
-in [CONFORMANCE.md](CONFORMANCE.md).
+The same findings in other formats. What each format name claims: [CONFORMANCE.md](CONFORMANCE.md); what each
+adapter refuses: [docs/ADAPTERS.md](docs/ADAPTERS.md).
 
 ```bash
 python -m entrovouch.sarif report.json --out results.sarif          # SARIF 2.1.0
 python -m entrovouch.attestation report.json --out statement.json   # in-toto Statement, not DSSE
 python -m entrovouch.cyclonedx cbom.json --out bom.cdx.json         # CycloneDX 1.6 CBOM
 python -m entrovouch.vex cbom.json --out vex.cdx.json               # in_triage, CWE-, never CVE-
-python -m entrovouch.timestamp request report.json --out req.tsq    # you send this; we never open a socket
-python -m entrovouch.timestamp check report.json --token resp.tsr   # imprint match, not TSA-chain verify
+python -m entrovouch.csaf cbom.json --publisher-name "Example Ltd" \
+    --publisher-namespace https://example.com --out vex.csaf.json   # CSAF 2.0 VEX, under_investigation
+python -m entrovouch.timestamp request report.json --out req.tsq    # RFC 3161; you send this, we never open a socket
+python -m entrovouch.timestamp check report.json --token resp.tsr --nonce N   # imprint and nonce, not TSA-chain verify
 ```
-
-SARIF, CycloneDX and the SBOM validate against their official schemas (test-only
-`jsonschema`; runtime stays stdlib). Schema validation is not a blank cheque: see
-CONFORMANCE.md.
 
 ### Reproducing a report
 
 ```python
+from pathlib import Path
 from entrovouch.no_egress_auditor import audit
 audit(Path("/path/to/project"), label="org/repo@commit").findings_digest
 ```
 
 | Field | Reproduces? | What it answers |
 |---|---|---|
-| `findings_digest` | **yes**, across runs, processes and machines | *Does this tool, on this tree, still say this?* |
+| `findings_digest` | yes, across runs, processes and machines | *Does this tool, on this tree, still say this?* |
 | `subject_digest` | yes, per tree | *Which tree was audited?* |
-| `content_hash` | **no**, by design | *Is this the exact artifact I was handed?* |
+| `content_hash` | no, by design | *Is this the exact artifact I was handed?* |
 
-All three are printed on the report, each labelled. **Comparing `content_hash` is the
-obvious instinct and the wrong move:** it covers the issuance timestamp and is *expected*
-to differ. A different content hash with an identical findings digest is the same result,
-issued twice. `key_provenance` has no digest; re-run it and read the findings.
-
-`subject_digest` is an order-independent SHA3-256 over every file the audit read, also
-carried as in-toto `subject`. A signature over a free-text label attests the sentence,
-not the tree.
-
-## What it will not do
-
-**The three scanners are AST-first, not grep.** A docstring that *mentions* `requests`
-does not fire; an import or call does. The SBOM reads declared dependencies, not a
-syntax tree.
-
-**This analyser underapproximates, and that word is the most important one on this page.**
-A *sound* analyser overapproximates: it may report egress that cannot happen, but never
-misses egress that can. This one does the opposite. It names the network surface it knows
-and stays silent about the rest, so **a CLEAN result is evidence of absence, not proof of
-it.**
-
-The blind spots are not only the clever ones. Obfuscation is undecidable in a
-Turing-complete language, but **an ordinary, unobfuscated import of a network module that
-is not on the list is equally invisible.** Detection is list-based and a list is never
-complete. The list is
-[`FORBIDDEN_IMPORT_MODULES`](entrovouch/no_egress_auditor.py), deliberately plain:
-check it against your own dependencies rather than taking a claim about coverage on trust.
-
-- **Static analysis only.** No runtime observation. No egress from a dependency you did
-  not point at, from dynamic loading, or from a compiled extension.
-- **A file that will not parse is reported, not skipped** (`unparseable-source`). An
-  unanalysed region is not "nothing found."
-- **A local module of the same name is not a network import.** `motor.py` in the tree
-  shadows the package; the name is listed in `shadowed_imports` rather than vanished.
-- **A declared dependency is not a call site.** `stripe` in `pyproject.toml` is
-  `declared-network-dependency`. Names the import list does not know stay invisible
-  here too — declared-intent uses the same list; it does not secretly complete it.
-- **Outbound and inbound are different findings.** A listening socket is
-  `inbound-listener`, never egress.
-- **A clean audit describes a tree at a commit, not a running system.**
-- **`REVIEW` means review.** It is not a pass.
-
-### How often is it wrong?
-
-Measured, not asserted. The three scanners (not `sbom`) were run on 2026-08-30 over
-**20 well-known, permissively-licensed Python repositories** (requests, flask, pytest,
-pydantic, httpx, black, typer, attrs, click, tox, isort, structlog, loguru, tenacity,
-faker, jsonschema, anyio, more-itertools, python-dotenv, records). Every finding was
-classified against one question: **can the flagged construct actually reach the network?**
-
-| Tool | Findings | False positives, first run | After the fix |
-|---|---|---|---|
-| `no_egress_auditor` | 430 | **32 of 257 judged, 12.5%** | **0**, finding count unchanged |
-| `key_provenance` | 23 | **16 of 23, 70%** | **1 arguable of 8**, all 7 true positives kept |
-| `cbom` | 90 | 0 against its stated scope | 4 downgraded where the author declared non-security |
-
-Each false-positive class was one structural defect (pure submodules reported as
-sockets; mapping keys named `*_KEY`; `usedforsecurity=False` ignored), not a longer
-exception list. **41 of the 90 CBOM components are `random`:** accurate, and in a test
-suite rarely actionable. Accuracy and actionability are different properties.
-
-### And how often does it MISS?
-
-| Tier | What it represents | Recall |
-|---|---|---|
-| **A — plain, module on the list** | not hiding: `import requests`, a lazy import in a function | **3/3, 100%** |
-| **A′ — plain, module NOT on the list** | the same developer using a library we never named: `import stripe`, `import minio` | **0/59, 0%** |
-| **B — light obfuscation** | avoiding a linter: aliases, `try/except` imports, `importlib`, split strings, `curl` via `subprocess` | **6/6, 100%** |
-| **C — deliberate evasion** | someone who read this source: `getattr` chains, `ctypes`, char-code module names, vendored copies | **2/10, 20%** |
-
-**Tier A′ is the row that matters.** Tiers A and B originally used modules already on
-the list, so those rows could not fail. A fixture set drawn independently scored 0 of 46.
-The list was extended by 46 names and A′ re-measured against 59 libraries deliberately
-not added: **still 0%.**
-
-> **Extending the list moves the boundary. It does not remove it.** Recall against
-> libraries the list does not name is 0% by construction, not by oversight, and not
-> fixable by a longer list.
-
-**20% against a deliberate adversary is why this page says `underapproximates` rather
-than `proves`.** Most of tier C is undecidable. One miss
-(`subprocess.run([sys.executable, "-c", ...])`) was measured and declined: treating
-the interpreter as a network binary would trade that miss for a flood of false
-positives on test runners.
-
-Precision is measured on mature libraries; recall against fixtures we wrote. An
-adversary who has not seen them may do better than tier C suggests. Published work
-puts static-analysis abandonment at false-positive rates above 20–30%. The corpus,
-date and method are stated so you can redo both.
-
-### What kind of assurance this is
-
-Under ISAE 3000 and SSAE 18, **reasonable assurance** is a positive opinion (*in our
-opinion, X is the case*) and **limited assurance** is a negative one (*nothing came to
-our attention to suggest otherwise*). They are different statements, not a strong and
-weak version of the same one.
-
-**Everything this tool produces is limited assurance.** `CLEAN` means *nothing came to
-our attention*, not *there is nothing there*. Because the analyser underapproximates, a
-positive opinion is not available to it at any level of effort.
-
-**This is a translation, not a credential.** EntroVerse is not a licensed audit firm,
-this is not an engagement under any standard, and nothing here is performed by a party
-independent of the tool's author unless you separately engage one.
+Compare `findings_digest`; `content_hash` covers the time of issue and differs on every run. `key_provenance` has no
+findings digest: re-run it and read the findings. Details: [docs/REPRODUCING.md](docs/REPRODUCING.md).
 
 ### Exit codes
 
 ```
 0  clean          no findings   (SBOM: the run succeeded; empty vs declared is a field)
-1  findings       the scan ran and found something
-2  could not run  bad arguments, unreadable target — NOT a clean result
+1  findings       the scan ran and found something, or a file it could not parse
+                  (verify: any status but ATTESTED)
+2  could not run  bad arguments, unreadable target, missing key, an internal error,
+                  or NOTHING WAS SCANNED (`NOT-ANALYSED`): never a clean result
 ```
 
-**1 and 2 are different answers.** A pipeline that treats them alike will eventually
-report a broken scan as a passing one. `sbom` exits 0 if it ran; whether the BOM lists
-components is in the document, not the exit code.
+Treat 1 and 2 differently in a pipeline: 2 means the scan did not run, or read nothing.
+
+## What a result means
+
+`no_egress_auditor` underapproximates. A sound analyser overapproximates: it may report egress that cannot happen,
+but it never misses egress that can. This one reports the network surface it knows and is silent about the rest, so
+a `CLEAN` result is evidence of absence, not proof.
+
+Detection is list-based. An ordinary import of a network library that is not on the list produces no finding. The
+list is `FORBIDDEN_IMPORT_MODULES` in [`entrovouch/no_egress_auditor.py`](entrovouch/no_egress_auditor.py); check it
+against your own dependencies. Every report carries `unlisted_imports` and `unlisted_js_imports`: the third-party
+Python modules and JavaScript packages the tree imports that are on none of the tool's lists. The tool says nothing
+about what they do. Both lists are covered by the findings digest.
+
+Every report also lists what the tool did not read: skipped directories, file types it has no reader for, and
+links. A file that will not parse is a finding, and so is a compiled module, executable or archive in the tree. A
+tree in which nothing was read is `NOT-ANALYSED`, exit 2.
+
+- The analysis is static. It does not watch the code run, and it does not see egress from a dependency you did not
+  point it at, from dynamic loading or from a compiled extension.
+- A declared dependency is not a call site: `stripe` in `pyproject.toml` is reported as
+  `declared-network-dependency`.
+- A server is `inbound-listener`, never egress.
+- A report describes the tree at one commit.
+- `REVIEW` means review: a person reads the finding before anything passes.
+
+### What kind of assurance this is
+
+Under ISAE 3000 and SSAE 18, reasonable assurance is a positive opinion (*in our opinion, X is the case*) and
+limited assurance is a negative one (*nothing came to our attention to suggest otherwise*). Everything these tools
+produce is limited assurance: `CLEAN`, `NOTHING-VULNERABLE-FOUND` and `NOTHING-FOUND` mean nothing came to our
+attention in the files the tool read. Because the analyser underapproximates, no amount of effort lets it give a
+positive opinion. EntroVerse is not a licensed audit firm, and running these tools is not an engagement under either
+standard.
+
+### How often is it wrong?
+
+Each tool was run on public Python repositories drawn at random with a fixed seed and pinned to a commit. Every
+finding was read at its source line against one question: is what it says about that line true? A finding defensible
+either way is counted both ways. The figures are for this release, on sets no change was made from; every set is in
+[PRECISION_CORPUS.md](PRECISION_CORPUS.md).
+
+| Tool | Sets | Findings | False | Either way | Precision |
+|---|---|---|---|---|---|
+| `no_egress_auditor` | 42, 43, 45 | 885 | 0 | 3 | 100% (99.66%) |
+| `cbom` | 41 to 46 | 249 | 0 | 7 | 100% (97.19%) |
+| `key_provenance` | 50 | 21 | 3 | 16 | 85.7% (9.5%) |
+
+The first figure counts either-way findings as right; the figure in brackets counts them as wrong. `sbom` reads
+declared dependencies and has no precision figure.
+
+`key_provenance` is the weakest of the four. Its figure rests on 21 findings, so the 95% interval (Wilson) runs from
+65.4% to 95.0%; 16 of the 21 were placeholder values in tests. Its precision varies a lot between trees and is lowest
+on repositories heavy with configuration. Read every finding.
+
+Known false findings in this release: `key_provenance` reports a constant whose value names the setting it stands
+for (`CONF_CLIENT_SECRET = "client_secret"`) or a dictionary key (`NESTED_DOC_KEY = "_childDocuments_"`). The
+either-way findings of the other tools are listed per set in the corpus.
+
+Expect new false findings on code these tools have not seen, more of them from `key_provenance`. One or two
+repositories make most of the findings in most sets. The findings were read by AI models under the maintainers'
+direction, the `key_provenance` set twice and independently; no person has re-read a set. Many true findings sit in
+tests, examples and docs (192 of the 885), accurate and often not what a buyer is asking about.
+
+### How often does it miss?
+
+| Tier | What it represents | Recall |
+|---|---|---|
+| **A: plain, module on the list** | `import requests`, a lazy import in a function, `from http import client`, `import subprocess as sp` then `sp.run(["curl", ...])` | **4/4** import fixtures; the spawn forms are pinned by tests |
+| **A′: plain, module not on the list** | the same developer using a library the list does not name | **0/59** as findings; each is named in `unlisted_imports` |
+| **B: light obfuscation** | aliases, `try/except` imports, `importlib`, split strings, `curl` via `subprocess` | **6/6**, pinned by the suite |
+| **C: deliberate evasion** | ten programs written by someone who read this source: assembled names, a module written to disk and imported, the interpreter started through `Popen` | **7/10** trees not `CLEAN` |
+
+Recall on libraries the list does not name is 0% by construction; `unlisted_imports` names them in every report
+instead. The tier C programs are in `tests/test_detection_scope.py`, which fails if the three misses change, and
+`tests/test_runtime_oracle.py` compares the auditor with a Python audit hook (PEP 578) on 23 programs. We wrote
+both sets of programs, so an adversary who has not seen them may do better than tier C suggests.
 
 ## Signing
 
-**One signer ships: Lamport-Merkle SHA3-256.** Hardness is SHA3-256 preimage resistance
-alone. Keys are one-time; the leaf index is persisted before any secret is revealed.
-Signatures are ~16 KB. **It claims conformance to no published standard.** That is a
-position, not a gap: a signature you can check against a pinned root is worth more than
-a standards name this repository cannot support.
-
-With the root pinned, a signature proves the report came from the holder of that key
-and that its bytes are unaltered. It says nothing about whether the verdict is
-*correct*. The algorithm name and the public root are inside the signed bytes: editing
-either yields `TAMPERED`.
+One signer ships: Lamport-Merkle over SHA3-256, resting on SHA3-256 preimage resistance alone. It claims conformance
+to no published standard and does not meet NIST SP 800-208, which requires stateful keys to live in a hardware
+module; this key is a file. Each leaf signs once, so keep one copy of the key that signs, and run
+`python -m entrovouch.no_egress_auditor --key PATH --advance-key N` before a restored copy signs again. With the root
+pinned, a signature shows who issued a report and that it is unchanged. It says nothing about whether the verdict is
+correct. The full rules are in [docs/SIGNING.md](docs/SIGNING.md).
 
 ### The publisher's public root
 
@@ -256,29 +210,24 @@ either yields `TAMPERED`.
 eb309717634b3a9bd952aac903538bd9b3350d1b006f5176d1c87763ba87a96b
 ```
 
-**Paying customers pin the copy on [entroverse.com](https://entroverse.com) and in the
-engagement letter.** The value above is a convenience copy. Anyone who can alter this
-repository can alter this line. The `findings_digest` check does not depend on it.
+Paying customers pin the copy in their engagement letter; this one is a convenience copy that anyone who can alter
+the repository can alter. The example reports are unsigned on purpose.
 
 ```python
-from entrovouch.no_egress_auditor import verify_report
+from entrovouch.no_egress_auditor import verify_report    # cbom.verify_cbom, sbom.verify_sbom for those
 ok, status = verify_report(report, expected_root="eb309717…")
 # ok is True only for ATTESTED
 ```
 
-**`ok` is `True` for `ATTESTED` and nothing else.** `UNSIGNED` and `UNVERIFIED` are
-false. A report you did not pin a root for is not evidence of origin.
-
-Unsigned reports, and reports from before the current signer, are not evidence of
-origin. Re-run.
+`verify` prints `ATTESTED`, `UNVERIFIED`, `UNSIGNED` or `TAMPERED`. A report you did not pin a root for is not
+evidence of origin.
 
 ## Independently issued audits
 
-The tools, the module lists and the signing capability on this page are free, complete
-and identical for everyone. What cannot be self-served is independence: an audit you
-run on your own code is not an audit anyone else can rely on, and no amount of software
-fixes that. **Independent third-party issuance, classification of findings, and
-scheduled re-issuance: [entroverse.com](https://entroverse.com).**
+The tools, the module lists and the signing capability on this page are free, complete and identical for everyone.
+What cannot be self-served is independence: an audit you run on your own code is not an audit anyone else can rely
+on. Independent third-party issuance, classification of findings and scheduled re-issuance:
+[entroverse.com](https://entroverse.com).
 
 ## License
 

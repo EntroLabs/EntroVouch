@@ -6,8 +6,8 @@
       "tool": {
         "driver": {
           "name": "ENTROVOUCH no-egress auditor",
-          "version": "1.0.0",
-          "informationUri": "https://github.com/EntroLabs/entrovouch",
+          "version": "1.1.0",
+          "informationUri": "https://github.com/EntroLabs/EntroVouch",
           "rules": [
             {
               "id": "declared-network-dependency",
@@ -48,10 +48,35 @@
                   "egress"
                 ]
               }
+            },
+            {
+              "id": "network-target",
+              "name": "NetworkTargetBuilt",
+              "shortDescription": {
+                "text": "A request or client object is built for a literal address"
+              },
+              "fullDescription": {
+                "text": "A call builds a request object from a URL literal, or a client or connection pool from a connection string that names a host. The address is in the source; nothing is sent at this line, and whether and where the object is used is not resolved."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "supply-chain",
+                  "egress"
+                ]
+              }
             }
           ]
         }
       },
+      "invocations": [
+        {
+          "executionSuccessful": true
+        }
+      ],
       "results": [
         {
           "ruleId": "network-import",
@@ -76,10 +101,32 @@
           }
         },
         {
+          "ruleId": "network-target",
+          "level": "warning",
+          "message": {
+            "text": "Request(...) builds a request for a URL literal; nothing is sent at this line"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "collector.py"
+                },
+                "region": {
+                  "startLine": 10
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "entrovouchFindingV1": "e8c58231de21df2c570301adde21cb44"
+          }
+        },
+        {
           "ruleId": "declared-network-dependency",
           "level": "warning",
           "message": {
-            "text": "declared dependency 'stripe' names a known network package \u2014 not a call site; the tree depends on it"
+            "text": "declared dependency 'stripe' names a known network package - not a call site; the tree depends on it"
           },
           "locations": [
             {
@@ -94,16 +141,19 @@
             }
           ],
           "partialFingerprints": {
-            "entrovouchFindingV1": "f3cb19dcacdc9655e398afc2bd7ff370"
+            "entrovouchFindingV1": "3edb5ea5b97c45ff071f7135ebebe5a4"
           }
         }
       ],
       "properties": {
         "verdict": "FINDINGS",
+        "signed": false,
+        "signedBy": null,
+        "signatureChecked": "against the report body only; check the signer with `python -m entrovouch.verify <report> --root <the root you pinned>`",
         "filesScanned": 7,
-        "scopeStatement": "Static analysis of Python, TypeScript and HTML/JS. Catches the realistic/accidental egress class plus common deliberate patterns (network-capable imports, git remote subcommands, shell=True and os.system/popen, child_process, dynamic import/exec/eval, external references, network binaries spawned via argv list, telemetry/APM and cloud SDK imports). Does NOT mathematically prove zero egress in a Turing-complete language. Known blind spots, stated rather than implied: detection is BLOCKLIST-BASED, so it is complete only against names it knows -- a renamed, vendored or dynamically-constructed module or argv entry is invisible, and a blocklist can never be complete by construction. MEASURED 2026-08-31: against 59 network libraries chosen WITHOUT reference to the blocklist, recall is 0%, and it stayed 0% after the list was extended by 46 names -- so a PLAIN, unobfuscated `import X` of a library this tool does not name is invisible, exactly like an obfuscated one. Check FORBIDDEN_IMPORT_MODULES against your own dependencies before reading anything into a CLEAN verdict. Files that fail to parse are reported as `unparseable-source` findings and were NOT analysed. An import is NOT counted as a network import when the tree itself supplies a top-level module of that name, because that module shadows any installed package; every such name is listed in `shadowed_imports`, so a network client VENDORED into the tree root appears there rather than disappearing. Declared dependencies in pyproject.toml, requirements*.txt, setup.cfg and package.json that name a known network package are reported as `declared-network-dependency`: evidence the tree depends on that package, not a claim that a call site reaches the network. Non-literal arguments (variables, f-strings, lists built at runtime) are not resolved. This report is therefore DETECTION-grade evidence and does not support an unqualified claim of absence.",
-        "subjectDigest": "9919e0bddd5cd02013d90fbb4ad235be4d091e9053cbae2bacff42af04a3c71d",
-        "findingsDigest": "505e9bdfecedb54a38919dc6f710a1269bddb26019f3385c155f3bee0df6bcf2"
+        "scopeStatement": "Static analysis of Python (including notebooks, .pth files and shebang scripts), JavaScript, TypeScript, markup, stylesheets, shell, PowerShell and batch scripts, Dockerfiles, Makefiles, pipeline definitions and dependency manifests. It reports network-capable imports, calls that connect or listen, process spawns that reach a network binary, shell strings, dynamic code loading, native calls, external references, network commands in scripts, and declared network dependencies and remote sources. It does NOT prove zero egress: this is a Turing-complete language and the analysis underapproximates. Detection is BLOCKLIST-BASED, so it is complete only against names it knows: a renamed, vendored or dynamically-constructed module or argv entry is invisible. Measured against network libraries chosen without reference to the list, recall is 0%, so a PLAIN, unobfuscated `import X` of a library this tool does not name produces no finding, exactly like an obfuscated one. Check FORBIDDEN_IMPORT_MODULES against your own dependencies before reading anything into a CLEAN verdict. Every third-party module the Python in the tree imports that is on none of this tool's lists is named in `unlisted_imports` (for JavaScript and TypeScript packages, `unlisted_js_imports`): the verdict covers the names the tool knows, and that field lists the ones it does not. Files that fail to parse are reported as `unparseable-source` and were NOT analysed. Directories skipped by name, files of types this tool has no reader for (configuration data, other languages, lockfiles) and symbolic links are listed under `not_scanned` and counted in `files_not_read`; a tree in which nothing was read is NOT-ANALYSED rather than CLEAN. An import is NOT counted as a network import when the tree itself supplies a top-level module of that name, because that module shadows any installed package; every such name is listed in `shadowed_imports`, so a network client VENDORED into the tree root appears there rather than disappearing. Declared dependencies (pyproject.toml, requirement files, setup.cfg, setup.py, Pipfile, conda environment files, package.json) that name a known network package are reported as `declared-network-dependency`: evidence the tree depends on that package, not a claim that a call site reaches the network. An argument is resolved when the source spells it out or binds it once to a literal; anything built at run time (f-strings, concatenation, lists assembled in code) is not, except a file path whose UNC root is written in the file. The subject digest folds CRLF line endings to LF in text files, and file order is by path bytes, so the same tree gives the same report on every operating system and wherever it sits on disk. This report is DETECTION-grade evidence and does not support an unqualified claim of absence.",
+        "subjectDigest": "a19a74eacd9be59d4545aec928772b5e6a745c65f029969df244700c84fdc269",
+        "findingsDigest": "a91fca2e94d1dadb6b9378bcfda1d7798576c50c0eba6ce57f9e9bcb93f45097"
       }
     }
   ]

@@ -1,8 +1,8 @@
 """End-to-end: a report/CBOM produced WITH a signing identity must verify as
 ATTESTED against that identity's root, and must fail against any other.
 
-Isolated signer tests are not enough — the defect being closed here was never
-in a signing primitive, it was in how the report pipeline *used* one.
+Isolated signer tests are not enough: a sound signing primitive can still be
+misused by the report pipeline, so the pipeline is tested end to end.
 """
 from dataclasses import asdict
 
@@ -34,7 +34,7 @@ def test_signed_report_is_attested(repo, signer):
 
 
 def test_signed_report_without_pinned_root_is_unverified(repo, signer):
-    """The caller who does not pin a root gets UNVERIFIED, not ATTESTED —
+    """The caller who does not pin a root gets UNVERIFIED, not ATTESTED -
     holding a signature is not the same as knowing who made it."""
     rep = audit(repo, signer=signer)
     assert verify_report(asdict(rep)) == (False, "UNVERIFIED")  # valid sig, unpinned identity

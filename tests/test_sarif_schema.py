@@ -1,35 +1,32 @@
 """SARIF output validated against the OFFICIAL OASIS schema.
 
-This repository named `SARIF 2.1.0` in its README four times and had never once
-checked the output against the schema OASIS publishes. What existed was a string
-comparison:
+The README names `SARIF 2.1.0`, so the output is checked against the schema OASIS
+publishes. A string comparison such as:
 
     assert s["$schema"].endswith("sarif-2.1.0.json")
 
-That asserts we wrote the right URL. **It does not assert the document conforms to
-what is at that URL** — it would pass for a document whose every other field was
+asserts we wrote the right URL. **It does not assert the document conforms to
+what is at that URL**: it would pass for a document whose every other field was
 wrong, or absent.
 
-⚠️ **The estate's own gate did not catch this, and the reason is worth recording.**
-A conformance guard that looks for *signals* near a standards claim can be
-satisfied by conformance machinery belonging to a **different** standard, and then
-it returns the right verdict for the wrong reason. **Only a test against this
+Conformance machinery belonging to a **different** standard (the CycloneDX schema
+tests, for example) says nothing about this one. **Only a test against this
 standard's own schema settles this standard's claim.**
 
 **Naming a standard is a CHECKABLE claim.** The rule this repository holds itself
 to has two options and no third: either a test runs against that standard's own
 published schema or vectors, or the standard is not named. This file is the first
-option, taken.
+option.
 
 SCHEMA PROVENANCE
 -----------------
 `tests/schemas/sarif-2.1.0.schema.json` is the OASIS SARIF Technical Committee's
 published JSON Schema for SARIF 2.1.0, vendored verbatim and **pinned by SHA-256**
-below so a future edit to the fixture cannot silently weaken the check. It is
+below so an edit to the fixture cannot silently weaken the check. It is
 draft-04, which is why `Draft4Validator` is selected explicitly rather than by
 auto-detection.
 
-⛔ The validator is not hand-rolled, deliberately: a bespoke schema checker can be
+The validator is not hand-rolled, deliberately: a bespoke schema checker can be
 wrong in the same direction as the generator it checks.
 
 DEPENDENCY NOTE
@@ -105,7 +102,7 @@ def test_a_clean_scan_also_validates():
 
 
 # ---------------------------------------------------------------------------
-# NEGATIVE TESTS — a guard that has never fired is not evidence.
+# NEGATIVE TESTS: a guard that has never fired is not evidence.
 #
 # A validator returning zero errors is only meaningful if it is capable of
 # returning errors. Each case below is a document the schema MUST reject; if any
@@ -134,7 +131,7 @@ def test_validator_rejects_malformed_documents(name, mutate):
 def test_version_field_says_what_we_think_it_says():
     """SARIF, unlike CycloneDX 1.6, DOES constrain its own version field.
 
-    Recorded because the CycloneDX case went the other way: `specVersion` there is
+    Stated because the CycloneDX case goes the other way: `specVersion` there is
     declared as a plain string with "1.6" only as an *example*, so a document
     claiming "9.9" validates cleanly. **An external reference is necessary and not
     automatically sufficient, and which of the two applies is a per-standard fact

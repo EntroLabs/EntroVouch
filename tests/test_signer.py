@@ -1,8 +1,9 @@
 """Tests for the hash-based post-quantum signer.
 
-The load-bearing test is `test_public_material_cannot_forge`: it is the
-property the previous HMAC construction did not have, and its absence is why
-this module exists.
+The load-bearing test is `test_public_material_cannot_forge`: nothing an
+outsider can legitimately hold (the public root, earlier signatures) is enough
+to sign a new message. An HMAC keyed from published material does not have that
+property, which is why the signer is hash-based.
 """
 import json
 import hashlib
@@ -51,9 +52,8 @@ def test_wrong_root_rejected(signer, tmp_path):
 
 # ------------------------------------------------------- the core property
 def test_public_material_cannot_forge(signer):
-    """An attacker holding the public root and a previous signature cannot
-    sign a NEW message. This is precisely what the old covenant-derived HMAC
-    key failed to prevent."""
+    """An attacker holding the public root and an earlier signature cannot
+    sign a NEW message."""
     real_msg = b"audit of repo A"
     real_sig = signer.sign(real_msg)
     root = signer.public_root
@@ -72,9 +72,10 @@ def test_public_material_cannot_forge(signer):
     assert not verify_signature(real_msg, replay, expected_root=root)
 
 
-def test_old_covenant_key_construction_is_not_accepted(signer):
-    """The historical forgery: derive a key from the published Covenant string
-    and mint a 'signature'. The new verifier must not accept it in any form."""
+def test_a_mac_keyed_by_public_text_is_not_accepted(signer):
+    """A forgery from public material: derive an HMAC key from the published
+    Covenant string and mint a 'signature'. The verifier must not accept it in
+    any form."""
     covenant = "Optimize systems for people, not margin extraction. One Covenant. Always."
     body = b'{"verdict":"CLEAN"}'
     legacy_key = hashlib.sha3_256(covenant.encode()).digest()
@@ -134,12 +135,9 @@ def test_index_persists_across_reload(tmp_path):
 def test_signing_is_deterministic_for_a_given_leaf(tmp_path):
     """Same seed, same leaf -> byte-identical signature.
 
-    ⭐ The clone is IN-MEMORY (path=None) and that is the point, not a
+    The clone is IN-MEMORY (path=None) and that is the point, not a
     convenience. Determinism is a property of the key derivation, not of the
-    state file. This test previously handed the clone a path that was never
-    written; once reserve-before-return started reloading state, that raised
-    from inside json.loads and the failure read as a determinism regression
-    when nothing about determinism had changed.
+    state file.
 
     A persisted signer must reserve its leaf on disk before returning a
     signature. An in-memory signer reserves nothing and is the right object
@@ -153,10 +151,9 @@ def test_signing_is_deterministic_for_a_given_leaf(tmp_path):
 def test_persisted_signer_without_state_refuses_clearly(tmp_path):
     """A missing state file is a SignerError naming the remedy, never an OSError.
 
-    Regression for 2026-09-06: the reserve-before-return fix made sign()
-    reload, and a handle whose file did not exist died with a raw
-    FileNotFoundError from three frames down. In the estate's one PUBLIC
-    tool, that is a crash a reader cannot act on.
+    `sign()` reloads the state file to reserve a leaf before returning. A
+    handle whose file does not exist must say so and name both remedies: a raw
+    FileNotFoundError from inside the reload is a crash a reader cannot act on.
     """
     ghost = MerkleSigner(seed=b"\x07" * 32, height=3, next_index=0,
                          path=tmp_path / "never-written.json")

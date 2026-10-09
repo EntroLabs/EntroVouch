@@ -1,9 +1,9 @@
 """The version must agree everywhere it is claimed.
 
-Before 2026-08-19 it did not: __init__ said 1.1.0, the auditor's report field said
-1.1.0, and the CBOM's said 1.0.0, while the release was v1.0.0. `tool_version` is a
-REPORT FIELD, so a disagreement travels to whoever receives the audit and breaks the
-one thing the report is for — being reproducible by its recipient.
+The package, the auditor's report field and the CBOM's report field all take the
+version from one shared constant. `tool_version` is a REPORT FIELD, so a
+disagreement would travel to whoever receives the audit and break the one thing
+the report is for: being reproducible by its recipient.
 """
 import entrovouch
 from entrovouch._version import __version__

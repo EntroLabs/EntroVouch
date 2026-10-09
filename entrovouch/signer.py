@@ -1,36 +1,26 @@
 #!/usr/bin/env python3
 """
-ENTROVOUCH — hash-based post-quantum signer (Lamport-Merkle over SHA3-256).
+ENTROVOUCH hash-based signer (Lamport-Merkle over SHA3-256).
 
-WHY THIS EXISTS
----------------
-Until 2026-08-14 this package "signed" its audit reports with
-`HMAC-SHA3-256(sha3_256(covenant_text), body)` where `covenant_text` defaulted
-to a **string literal published in this repository**. That is not a signature.
-Anyone who read the source could derive the key and mint a report that passed
-`verify_report()` — demonstrated by execution before this module was written:
-a fabricated CLEAN verdict for a codebase nobody ever audited verified True.
-
-The distinction the old code lost is one this estate already states correctly
-elsewhere (`ENTROAUDIT/claim_manifest.py`): a locally-keyed MAC proves *this
-workspace wrote it*; it can never prove *this is genuine* to a third party.
-ENTROVOUCH's whole product claim is third-party verifiability, so it needs the
-asymmetric property: a verifier holding only public material must be unable to
-produce a signature.
-
-WHY HASH-BASED AND NOT ML-DSA
+WHY A SIGNATURE AND NOT A MAC
 -----------------------------
+A MAC keyed by anything the verifier can also hold proves only that someone with
+that key wrote the message. It can never prove to a third party who that was. This
+package's product claim is third-party verifiability, so it needs the asymmetric
+property: a verifier holding only public material must be unable to produce a
+signature.
+
+WHY HASH-BASED
+--------------
 - Post-quantum by construction. Security rests only on the preimage and
-  collision resistance of SHA3-256 — no lattice assumption, no number theory.
-  This package's own CBOM classifier already scores "Lamport OTS (hash-based)"
-  and "Merkle/XMSS" as SAFE, so the tool is consistent with its own policy.
-- Pure stdlib. This repo is the ONE public artifact in the estate and it has
-  zero dependencies on purpose; the no-egress claim is auditable partly
-  *because* there is nothing vendored to hide in. Importing a lattice library
-  (or vendoring ENTROAUTH's ML-DSA) would trade the strongest property this
-  package has for a shorter signature.
-- The cost is honest and stated: signatures are ~16 KB, and each leaf key is
-  ONE-TIME. Both are enforced below rather than left to the caller's care.
+  collision resistance of SHA3-256: no lattice assumption, no number theory.
+  This package's own CBOM classifier scores hash-based signatures as SAFE, so
+  the tool is consistent with its own policy.
+- Pure standard library. This package has zero dependencies on purpose; the
+  no-egress claim is auditable partly because there is nothing vendored to hide
+  in. A lattice library would trade that property for a shorter signature.
+- The cost is stated: signatures are about 16 KB, and each leaf key is ONE-TIME.
+  Both are enforced below rather than left to the caller's care.
 
 CONSTRUCTION
 ------------
@@ -64,10 +54,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from contextlib import nullcontext
 import threading
-from ._state_io import state_lock, atomic_write
+from ._state_io import state_lock, atomic_write, read_state_text, remove_stale_temps
 from pathlib import Path
 
 __all__ = [
@@ -80,24 +71,31 @@ UNSIGNED = "UNSIGNED - content hash only, origin NOT attested"
 
 _DIGEST_BITS = 256
 _HASH_LEN = 32
+# A signature has exactly these fields, integers that are integers, and 32-byte values
+# written as 64 lower-case hex digits. One signature has one encoding.
+_SIG_FIELDS = frozenset({"algorithm", "public_root", "leaf_index", "height", "ots", "auth_path"})
+_HEX32 = re.compile(r"[0-9a-f]{64}")
 
-# Domain separation (RFC 6962 / RFC 8391 practice). Without distinct tags for
-# leaves and internal nodes, an internal node can be presented as a leaf: the
-# classic Merkle second-preimage confusion. Here the leaf preimage is 512
-# hashes wide and an internal preimage is two, so the confusion was not
-# practically exploitable -- but "not exploitable in this shape" is an argument
-# that has to be re-made every time the shape changes, and a one-byte tag
-# retires it permanently.
+
+def _is_hex32(value) -> bool:
+    return isinstance(value, str) and _HEX32.fullmatch(value) is not None
+
+# Domain separation (RFC 6962 / RFC 8391 practice). Without distinct tags for leaves
+# and internal nodes, an internal node can be presented as a leaf: the classic Merkle
+# second-preimage confusion. A one-byte tag rules it out whatever shape the leaf and
+# node preimages have.
 #
-# NOTE: these tags change `public_root` for a given seed. That is a BREAKING
-# change to signing identity, and it is free exactly once -- before any root is
-# published and pinned by a reader. It was taken at that moment, deliberately.
+# These tags are part of what `public_root` commits to: changing one changes every
+# root, which breaks every identity a reader has pinned.
 _LEAF_TAG = bytes([0])   # 0x00 - leaf domain
 _NODE_TAG = bytes([1])   # 0x01 - internal-node domain
 
 # A hostile or corrupt keyfile must not be able to hang the process: building a
 # tree is O(2**height * 512) hashes, so height is bounded on load, not trusted.
 _MAX_HEIGHT = 20
+# the tallest tree a key may be made or loaded with: signing builds every leaf once per process, and a height-16
+# tree (65,536 one-time keys) takes about a minute; a verifier still accepts signatures up to _MAX_HEIGHT
+_MAX_KEY_HEIGHT = 16
 
 
 class SignerError(Exception):
@@ -114,6 +112,17 @@ class KeyExhausted(SignerError):
 
 class BadSignature(SignerError):
     """Signature is malformed (structurally invalid, not merely wrong)."""
+
+
+def _refuse_second_name(path: Path) -> None:
+    """A hard link gives one state file two names. The lock follows the name and a write replaces the file under
+    one name only, so two names can hand out the same leaf. Refused."""
+    try:
+        if os.stat(path).st_nlink > 1:
+            raise SignerError(f"signing state {path} has more than one name (a hard link); a one-time key must have "
+                              "exactly one, or two signers can use the same leaf. Keep one name and remove the others.")
+    except FileNotFoundError:
+        return
 
 
 def _h(*parts: bytes) -> bytes:
@@ -185,8 +194,8 @@ class MerkleSigner:
     def create(cls, path: Path, height: int = 10) -> "MerkleSigner":
         """Generate a NEW identity. Refuses to clobber an existing keyfile."""
         path = Path(path).resolve()
-        if type(height) is not int or not 1 <= height <= _MAX_HEIGHT:
-            raise SignerError('invalid tree height')
+        if type(height) is not int or not 1 <= height <= _MAX_KEY_HEIGHT:
+            raise SignerError(f'invalid tree height (1..{_MAX_KEY_HEIGHT})')
         with state_lock(path):
             if path.exists():
                 raise SignerError(f'{path} already exists; refusing to overwrite a signing key')
@@ -196,14 +205,23 @@ class MerkleSigner:
 
     @classmethod
     def load(cls, path: Path) -> "MerkleSigner":
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        h = int(raw["height"])
-        if not (1 <= h <= _MAX_HEIGHT):
+        try:
+            raw = json.loads(read_state_text(path))
+        except ValueError:
+            raise SignerError('malformed signing state: not JSON') from None
+        if not isinstance(raw, dict) or set(raw) != {"seed", "height", "next_index"}:
+            raise SignerError('malformed signing state: expected exactly seed, height and next_index')
+        h = raw["height"]
+        if type(h) is not int:
+            raise SignerError('malformed signing state: height is not an integer')
+        if not (1 <= h <= _MAX_KEY_HEIGHT):
             raise SignerError(
-                f"keyfile height {h} outside 1..{_MAX_HEIGHT}; refusing to build "
+                f"keyfile height {h} outside 1..{_MAX_KEY_HEIGHT}; refusing to build "
                 "a tree of that size (a corrupt or hostile keyfile must fail, "
                 "not hang)"
             )
+        if not _is_hex32(raw['seed']):
+            raise SignerError('malformed signing state: the seed is not 64 lower-case hex digits')
         seed = bytes.fromhex(raw['seed'])
         next_index = raw['next_index']
         if len(seed) != 32 or type(next_index) is not int or not 0 <= next_index <= (1 << h):
@@ -220,6 +238,7 @@ class MerkleSigner:
             return
         # Write-then-replace: a truncating in-place write that fails mid-encode
         # would destroy the identity outright.
+        remove_stale_temps(self.path)
         atomic_write(self.path,
             json.dumps(
                 {"seed": self.seed.hex(), "height": self.height,
@@ -249,11 +268,9 @@ class MerkleSigner:
     def algorithm(self) -> str:
         """The scheme this signer uses, readable BEFORE anything is signed.
 
-        Exposed 2026-08-21 so `audit()` can write the algorithm name into the
-        body it then signs. Previously the name was read back off the produced
-        signature and attached afterwards, which put it OUTSIDE the signed
-        bytes -- and a field a reader relies on to check a post-quantum claim
-        cannot be one anybody can edit without detection.
+        `audit()` writes the algorithm name into the body it then signs, so the
+        name a reader relies on is inside the signed bytes rather than attached
+        afterwards where anybody could edit it without detection.
         """
         return ALGORITHM
 
@@ -267,19 +284,12 @@ class MerkleSigner:
         with self._thread_lock:
             with state_lock(self.path) if self.path is not None else nullcontext():
                 if self.path is not None:
-                    # 🔴 A MISSING STATE FILE MUST NOT SURFACE AS FileNotFoundError.
-                    #
-                    # Reserve-before-return has to reload, so a handle carrying a
-                    # path whose file was never written used to die three frames
-                    # down inside json.loads with a raw OSError. Nothing in that
-                    # traceback says what a caller did wrong or what to do next.
-                    #
-                    # ⭐ The remedy is NOT to create the file here. `create()`
-                    # deliberately refuses to overwrite a signing key, and silently
-                    # provisioning one on an arbitrary path would defeat that.
-                    # A signer with no persisted state is legitimate -- pass
-                    # path=None -- but it is a DIFFERENT object, and a caller has
-                    # to say which one they meant.
+                    # A missing state file is reported with its remedies, never as a
+                    # raw FileNotFoundError from inside json. It is NOT created here:
+                    # `create()` refuses to overwrite a signing key, and provisioning
+                    # one on an arbitrary path would defeat that. A signer with no
+                    # persisted state is legitimate (path=None) but is a different
+                    # object, and the caller has to say which one they meant.
                     if not self.path.exists():
                         raise SignerError(
                             f"signing state {self.path} does not exist. One-time "
@@ -289,6 +299,7 @@ class MerkleSigner:
                             "provision one, or MerkleSigner(..., path=None) for "
                             "an in-memory signer that reserves nothing."
                         )
+                    _refuse_second_name(self.path)
                     latest = type(self).load(self.path)
                     if latest.seed != self.seed or latest.height != self.height:
                         raise SignerError('signing identity changed on disk')
@@ -296,6 +307,39 @@ class MerkleSigner:
                         raise IndexReuse('signing state rolled back since this handle loaded')
                     self.next_index = latest.next_index
                 return self._sign_reserved(message, index)
+
+    def advance(self, count: int) -> int:
+        """Mark the next `count` leaves as spent without signing, and persist that.
+
+        Use it after restoring the key file from a backup, or before a second copy
+        of the key signs anywhere: every leaf a lost or copied state file may have
+        used must never be used again, and nothing in a signature can tell a
+        verifier that a leaf was reused. Advance by at least the number of
+        signatures that could have been made since the copy was taken. Returns the
+        new next unused index.
+        """
+        if type(count) is not int or count < 1:
+            raise SignerError("count must be a positive integer")
+        with self._thread_lock:
+            with state_lock(self.path) if self.path is not None else nullcontext():
+                if self.path is not None:
+                    _refuse_second_name(self.path)
+                    latest = type(self).load(self.path)
+                    if latest.seed != self.seed or latest.height != self.height:
+                        raise SignerError('signing identity changed on disk')
+                    self.next_index = max(self.next_index, latest.next_index)
+                new = self.next_index + count
+                if new > self.leaf_count:
+                    raise KeyExhausted(f"advancing by {count} passes the last of {self.leaf_count} leaves")
+                _previous = self.next_index
+                self.next_index = new
+                if self.path is not None:
+                    try:
+                        self._save()
+                    except Exception:
+                        self.next_index = _previous
+                        raise
+        return self.next_index
 
     def _sign_reserved(self, message: bytes, index: int | None) -> dict:
         if not isinstance(message, bytes):
@@ -314,12 +358,12 @@ class MerkleSigner:
             )
 
         # RESERVE THE INDEX ON DISK BEFORE REVEALING ANY SECRET MATERIAL.
-        # The previous order was: sign, then persist. A crash, a full disk, or a
-        # kill between those two steps left the used index unrecorded, so the
-        # next process reused it -- and reuse of a Lamport leaf leaks half of
-        # each key pair and makes forgery practical. NIST SP 800-208 treats this
-        # crash-consistency requirement as the defining hazard of stateful
-        # hash-based signatures, not an implementation detail.
+        # If the signature were returned first, a crash, a full disk or a kill before the
+        # index was recorded would let the next process reuse the leaf, and reuse of a
+        # Lamport leaf leaks half of each key pair and makes forgery practical. NIST
+        # SP 800-208 treats this crash-consistency requirement as the defining hazard of
+        # stateful hash-based signatures, not an implementation detail. This scheme
+        # claims no conformance to SP 800-208: the key is a file, and exportable.
         #
         # Failing forward (burning an index on an error) costs one signature out
         # of 2**height. Failing backward costs the identity.
@@ -356,15 +400,25 @@ def verify_signature(message: bytes, sig: dict, expected_root: str | None = None
     exact confusion this module exists to remove, so callers verifying a report
     from a third party must always pass it.
     """
+    if not isinstance(sig, dict) or not isinstance(message, (bytes, bytearray, memoryview)):
+        return False
     try:
         if sig.get("algorithm") != ALGORITHM:
             return False
+        if set(sig) != _SIG_FIELDS:
+            raise BadSignature("a signature has exactly the six documented fields")
         ots = sig["ots"]
         if not isinstance(ots, list) or len(ots) != _DIGEST_BITS * 2:
-            raise BadSignature(f"expected {_DIGEST_BITS * 2} OTS elements, got {len(ots)}")
-        idx = int(sig["leaf_index"])
-        height = int(sig["height"])
+            raise BadSignature(f"expected {_DIGEST_BITS * 2} OTS elements")
+        idx = sig["leaf_index"]
+        height = sig["height"]
+        if type(idx) is not int or type(height) is not int:
+            raise BadSignature("leaf index and height are integers")
         auth = sig["auth_path"]
+        if not isinstance(auth, list) or not all(_is_hex32(x) for x in auth) or not all(_is_hex32(x) for x in ots):
+            raise BadSignature("every value is 64 lower-case hex digits")
+        if not _is_hex32(sig["public_root"]):
+            raise BadSignature("the public root is 64 lower-case hex digits")
         if len(auth) != height:
             raise BadSignature(f"auth path length {len(auth)} != height {height}")
         if not (1 <= height <= _MAX_HEIGHT):

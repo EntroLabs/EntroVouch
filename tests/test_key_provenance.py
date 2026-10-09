@@ -1,8 +1,9 @@
 """Tests for the key-provenance detector.
 
-The two load-bearing cases are `test_catches_the_historical_defect` (it must
-catch the exact code that produced it) and `test_does_not_flag_the_fix` (a
-detector that fires on the correct pattern trains people to ignore it).
+The two load-bearing cases are `test_a_key_hashed_from_a_parameter_is_reported` (a signing
+key derived from a constant published in the source must be reported) and
+`test_does_not_flag_the_fix` (a detector that fires on the correct pattern
+trains people to ignore it).
 """
 import pytest
 
@@ -14,8 +15,8 @@ def _write(tmp_path, name, src):
     return tmp_path
 
 
-# ------------------------------------------------------- the historical case
-HISTORICAL = '''
+# ---------------------------------------- a key derived from a public constant
+PARAMETER_HASH_CASE = '''
 import hashlib, hmac
 _DEFAULT_COVENANT = "Optimize systems for people, not margin extraction. One Covenant. Always."
 
@@ -29,9 +30,10 @@ def _sign_default(body):
 '''
 
 
-def test_catches_the_historical_defect(tmp_path):
-    """The exact construction this package shipped until 2026-08-14."""
-    rep = scan_key_provenance(_write(tmp_path, "old_signer.py", HISTORICAL))
+def test_a_key_hashed_from_a_parameter_is_reported(tmp_path):
+    """An HMAC key hashed from a string constant in the same source: anyone
+    who can read the file can compute the key, so the signature is forgeable."""
+    rep = scan_key_provenance(_write(tmp_path, "old_signer.py", PARAMETER_HASH_CASE))
     assert rep.verdict == "REVIEW"
     kinds = {f["kind"] for f in rep.findings}
     assert "derived-from-constant" in kinds, rep.findings
@@ -40,10 +42,8 @@ def test_catches_the_historical_defect(tmp_path):
 def test_catches_a_bare_literal_key(tmp_path):
     """The classic construction: a signing secret as a source literal.
 
-    Fixture deliberately neutral. An earlier version used a real identifier
-    from a private sibling project -- in a PUBLIC repository, which turned a
-    test fixture into reconnaissance for a system nobody outside can see.
-    The detector does not care what the string says.
+    The fixture value is deliberately neutral: the detector does not care what
+    the string says.
     """
     src = '_SIGNING_SECRET = b"example-service-signing-key-v1"\n'
     rep = scan_key_provenance(_write(tmp_path, "m.py", src))
@@ -58,8 +58,8 @@ def test_catches_hmac_keyed_directly_by_a_literal(tmp_path):
 
 # -------------------------------------------------------- must NOT fire
 def test_does_not_flag_the_fix(tmp_path):
-    """The corrected form. A detector that flags the remedy is worse than
-    no detector — it teaches people to ignore it."""
+    """The correct form: the key comes from the environment. A detector that
+    flags the remedy is worse than no detector: it teaches people to ignore it."""
     src = '''
 import os, hmac, hashlib
 _KEY_ENV = "EXAMPLE_PATCH_SIGNING_KEY"
@@ -75,11 +75,11 @@ def sign(m):
 '''
     rep = scan_key_provenance(_write(tmp_path, "m.py", src))
     assert rep.findings == [], rep.findings
-    assert rep.verdict == "NO-PUBLIC-KEY-MATERIAL"
+    assert rep.verdict == "NOTHING-FOUND"
 
 
 def test_does_not_flag_a_locally_generated_key(tmp_path):
-    """ENTROAUDIT's correct pattern: os.urandom into a gitignored keyfile."""
+    """The correct pattern: os.urandom into a gitignored keyfile."""
     src = '''
 import os, hmac, hashlib
 from pathlib import Path
@@ -114,8 +114,8 @@ def test_unrelated_literals_are_not_flagged(tmp_path):
 # ------------------------------------------------------------- reporting
 def test_clean_tree_reports_clean(tmp_path):
     rep = scan_key_provenance(_write(tmp_path, "m.py", "x = 1\n"))
-    assert rep.verdict == "NO-PUBLIC-KEY-MATERIAL"
-    assert "No key material" in render_markdown(rep)
+    assert rep.verdict == "NOTHING-FOUND"
+    assert "Nothing came to this tool" in render_markdown(rep)
 
 
 def test_scope_statement_states_its_own_blind_spots(tmp_path):
@@ -127,7 +127,7 @@ def test_scope_statement_states_its_own_blind_spots(tmp_path):
 
 
 def test_review_is_not_an_accusation(tmp_path):
-    rep = scan_key_provenance(_write(tmp_path, "m.py", HISTORICAL))
+    rep = scan_key_provenance(_write(tmp_path, "m.py", PARAMETER_HASH_CASE))
     assert all(f["verdict"] == "REVIEW" for f in rep.findings)
     assert "REVIEW means review" in render_markdown(rep)
 
@@ -137,7 +137,7 @@ def test_unparseable_file_does_not_crash(tmp_path):
     assert rep.files_scanned == 1 and rep.findings == []
 
 
-# ------------------------------- ordinary-sense suppression (measured FPs)
+# ----------------------------------------------- ordinary-sense suppression
 @pytest.mark.parametrize("src", [
     'key = "low"\n',                                    # dict lookup key
     'ROBOTS_TOKEN_ONLY = "robots_token_only"\n',        # enum member
@@ -145,8 +145,8 @@ def test_unparseable_file_does_not_crash(tmp_path):
     'keys = "abc"\n',
 ])
 def test_ordinary_programming_nouns_suppressed(tmp_path, src):
-    """These four shapes were the bulk of a measured 31-finding estate run.
-    A detector that fires on them gets ignored."""
+    """`key`, `keys` and enum-style `*_TOKEN_*` names are ordinary programming
+    nouns, common in real code. A detector that fires on them gets ignored."""
     assert scan_key_provenance(_write(tmp_path, "m.py", src)).findings == []
 
 
@@ -159,14 +159,14 @@ def test_suppression_does_not_swallow_real_key_material(tmp_path, src, why):
     assert scan_key_provenance(_write(tmp_path, "m.py", src)).findings != [], why
 
 
-# ------------- second-run FP classes (measured on the estate, 2026-08-14)
+# ------------- sort-key expressions and tokenizer symbols are not credentials
 @pytest.mark.parametrize("src", [
     "key_expr = ''\n",                      # sort-key expression in a compiler
     'key_expression = "x.name"\n',
     'retrieve_token = "<RETRIEVE>"\n',      # tokenizer symbol, not a credential
     'mask_token = "<MASK>"\n',
 ])
-def test_second_run_false_positive_classes_suppressed(tmp_path, src):
+def test_mapping_keys_and_enum_names_are_not_reported(tmp_path, src):
     assert scan_key_provenance(_write(tmp_path, "m.py", src)).findings == []
 
 

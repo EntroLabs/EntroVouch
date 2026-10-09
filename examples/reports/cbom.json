@@ -1,13 +1,13 @@
 {
   "tool": "ENTROVOUCH CBOM generator",
-  "tool_version": "1.0.0",
-  "target": "sample_service",
-  "scanned_at_utc": "2026-09-01T22:33:54.943636+00:00",
+  "tool_version": "1.1.0",
+  "target": "entrovouch/examples/sample_service",
+  "scanned_at_utc": "2026-10-09T02:03:36.527557+00:00",
   "files_scanned": 6,
   "verdict": "BROKEN-CRYPTO",
   "summary": {
     "BROKEN": 2,
-    "VULNERABLE": 2,
+    "VULNERABLE": 1,
     "WEAK-RNG": 1,
     "REVIEW": 2,
     "GROVER-REDUCED": 2,
@@ -40,14 +40,6 @@
     },
     {
       "file": "tokens.py",
-      "line": 58,
-      "primitive": "RSA private key (PEM in source)",
-      "category": "key-material",
-      "quantum": "VULNERABLE",
-      "detail": "-----BEGIN RSA PRIVATE KEY----- \u2014 key material present in the source tree"
-    },
-    {
-      "file": "tokens.py",
       "line": 9,
       "primitive": "random-MersenneTwister",
       "category": "rng",
@@ -57,7 +49,7 @@
     {
       "file": "tokens.py",
       "line": 45,
-      "primitive": "PyJWT (algorithm-dependent \u2014 see JWS alg tokens)",
+      "primitive": "PyJWT (algorithm-dependent: see JWS alg tokens)",
       "category": "library",
       "quantum": "REVIEW",
       "detail": "import jwt"
@@ -108,7 +100,7 @@
       "primitive": "secrets-CSPRNG",
       "category": "rng",
       "quantum": "SAFE",
-      "detail": "secrets.token_hex(...) \u2014 CSPRNG"
+      "detail": "secrets.token_hex(...): CSPRNG"
     },
     {
       "file": "tokens.py",
@@ -127,20 +119,28 @@
       "detail": "hmac.new(...)"
     }
   ],
-  "scope_statement": "Static analysis names the primitives a codebase REFERENCES; it cannot prove a referenced primitive is reached at runtime, cannot always infer a dynamically-computed key SIZE, and cannot see crypto behind full obfuscation. High-recall inventory + PQ-status verdict (the CBOM the migration standards ask for), NOT a proof of cryptographic soundness.",
+  "files_not_parsed": [],
+  "not_scanned": {
+    "skipped_directories": {},
+    "symbolic_links": 0,
+    "files_not_python": 2
+  },
+  "scope_statement": "Static analysis of Python source names the cryptographic primitives a codebase REFERENCES; it cannot prove a referenced primitive is reached at runtime, cannot always infer a dynamically-computed key SIZE, cannot see crypto behind obfuscation, and reads no language but Python. It is an inventory of the primitives this tool knows plus a post-quantum status, NOT a proof of cryptographic soundness. NOTHING-VULNERABLE-FOUND means nothing vulnerable came to this tool's attention in the files it read; REVIEW-NEEDED means nothing was classified vulnerable or broken and at least one component (a library whose algorithm is chosen at the call, a mode, a switch) needs a person to classify it, or a Python file would not parse and is listed in files_not_parsed; NOT-ANALYSED means no file was read.",
   "subject": [
     {
-      "name": "sample_service",
+      "name": "entrovouch/examples/sample_service",
       "digest": {
-        "sha3-256": "b707f8f2ed031bd9358248241bb083fbd6580388ed3b1369f5bb83a7fa38cb99"
+        "sha3-256": "d70b977bb036581a8e263ed910c249054206cf3fb0248ac3a6b5c0ce069234db"
       }
     }
   ],
-  "subject_digest": "b707f8f2ed031bd9358248241bb083fbd6580388ed3b1369f5bb83a7fa38cb99",
-  "findings_digest": "c945e12617f146e65ff2ebb9bbfe96dd0f49234b419193ca507d18e1b66754b6",
-  "content_hash": "c3d3316df7d12e969ca89f7fcd9dfe799366703fcd5ee0430b16255ccf0288ef",
+  "subject_digest": "d70b977bb036581a8e263ed910c249054206cf3fb0248ac3a6b5c0ce069234db",
+  "tree_listing_digest": "18a2b08bf9bfcf85fb734aadb033121ef2bc061a10839dae1f8bd126cbba4b04",
+  "findings_digest": "fc18a936a7e3cea925a95002c114de271f033274437fe419a9be2d5cfc058f49",
+  "content_hash": "5f7b96dd80befa3e6b60843968eda8acdf9cec101671608683137c2933464784",
   "integrity_tag": "",
   "self_scan_suppressed": false,
+  "parser_python": "3.14",
   "signature_algorithm": "UNSIGNED - content hash only, origin NOT attested",
   "signature": null,
   "public_root": ""

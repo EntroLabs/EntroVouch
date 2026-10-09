@@ -7,18 +7,18 @@ against `examples/sample_service/`, and compares one value against the committed
 report. That only means something if the committed report cannot drift from the
 tool that claims to produce it.
 
-⭐ A published artifact nobody re-derives is a claim, not evidence. Without this
-test the demo would degrade silently on the first behaviour change — and it would
+A published artifact nobody re-derives is a claim, not evidence. Without this
+test the demo would degrade silently on the first behaviour change: and it would
 degrade in the worst direction, because a prospect's honest run would then
 DISAGREE with our published output and they would reasonably conclude we faked it.
 
 WHAT IT COMPARES, and what it deliberately does not
 ---------------------------------------------------
-· `findings_digest` — bit-identical across runs, processes and machines. Covers
+· `findings_digest`: bit-identical across runs, processes and machines. Covers
   the tool, its version, the subject digest, the verdict and every finding.
   **This is the comparison.**
-· `subject_digest`  — binds the report to the audited tree. Also compared.
-· `content_hash`    — covers the issuance timestamp and is EXPECTED to differ on
+· `subject_digest` : binds the report to the audited tree. Also compared.
+· `content_hash`   : covers the issuance timestamp and is EXPECTED to differ on
   every run. Comparing it is the mistake the README warns readers away from, so
   this test must not make it either.
 """
@@ -35,11 +35,12 @@ REPO = Path(__file__).resolve().parents[1]
 REPORTS = REPO / "examples" / "reports"
 TREE = "examples/sample_service"
 
-#: (committed report, module, extra argv) — exit 1 means "found something", not an error.
+#: (committed report, module, extra argv): exit 1 means "found something", not an error.
 CASES = [
     ("egress.json", "entrovouch.no_egress_auditor",
      ["--label", "entrovouch/examples/sample_service"]),
-    ("cbom.json", "entrovouch.cbom", []),
+    ("cbom.json", "entrovouch.cbom",
+     ["--label", "entrovouch/examples/sample_service"]),
     ("key_provenance.json", "entrovouch.key_provenance",
      ["--label", "entrovouch/examples/sample_service"]),
     ("sbom.json", "entrovouch.sbom",
@@ -71,10 +72,10 @@ def test_committed_example_still_reproduces(name, module, extra, tmp_path):
 
     for field in ("findings_digest", "subject_digest"):
         if field not in committed and field not in fresh:
-            # ⚠️ Pinned rather than skipped. `key_provenance` emits NO digest at
+            # Pinned rather than skipped. `key_provenance` emits NO digest at
             # all, so the README's "re-run and compare one value" instruction does
-            # not apply to it — a real asymmetry between the three tools, named in
-            # examples/README.md. A silent `continue` here would have let this test
+            # not apply to it: a real asymmetry between the tools, named in
+            # examples/README.md. A silent `continue` here would let this test
             # report success while verifying nothing for that report.
             assert name == "key_provenance.json", (
                 f"{name} lost its {field}. Only key_provenance is expected to lack "
@@ -87,7 +88,7 @@ def test_committed_example_still_reproduces(name, module, extra, tmp_path):
             f"  committed: {committed.get(field)}\n"
             f"  today    : {fresh.get(field)}\n"
             "The tool's behaviour changed. Re-run examples/regenerate.py and commit "
-            "the result — but read the diff first: a prospect comparing against the "
+            "the result: but read the diff first: a prospect comparing against the "
             "old artifact would have concluded the report was fabricated."
         )
 
@@ -104,7 +105,7 @@ def test_content_hash_is_expected_to_differ():
     assert "content_hash" in committed, "the report no longer carries a content_hash"
     assert "findings_digest" in committed, "the report no longer carries a findings_digest"
     assert committed["content_hash"] != committed["findings_digest"], (
-        "content_hash and findings_digest are equal — if they ever converge, the "
+        "content_hash and findings_digest are equal: if they ever converge, the "
         "README's central instruction ('compare the findings digest, not the "
         "content hash') stops distinguishing anything."
     )
@@ -115,11 +116,11 @@ def test_the_fixture_actually_produces_findings():
 
     The fixture carries a deliberate network import, deliberate weak primitives
     and a deliberate in-source signing key. If any of those stop being found, the
-    example still 'passes' while showing a reader nothing — the failure mode this
+    example still 'passes' while showing a reader nothing: the failure mode this
     whole directory exists to avoid.
     """
-    # The CBOM inventories `components`, not `findings` — the field differs by
-    # report type, and assuming otherwise made this test fail on a healthy report.
+    # The CBOM and SBOM inventory `components`, not `findings`: the field
+    # differs by report type.
     expected = {"egress.json": "findings",
                 "cbom.json": "components",
                 "key_provenance.json": "findings",
@@ -136,12 +137,12 @@ def test_the_fixture_actually_produces_findings():
 def test_the_digests_printed_in_the_examples_readme_are_the_real_ones():
     """The demo's whole instruction is "compare this value". It must be current.
 
-    ⭐ This repository already learned this once, in `test_readme_claims.py`: a
-    number written by hand in prose and maintained by memory goes stale on the
-    next commit, every time. Here the stale number would be worse than a wrong
-    test count — a prospect following our own instructions would compare against a
-    dead digest, see a mismatch, and reasonably conclude the published report was
-    fabricated. That is the exact conclusion this directory exists to prevent.
+    A value written by hand in prose and maintained by memory goes stale on the
+    next commit (`test_readme_claims.py` asserts the test count for the same
+    reason). A stale digest is worse than a wrong test count: a prospect
+    following our own instructions would compare against a dead digest, see a
+    mismatch, and reasonably conclude the published report was fabricated. That
+    is the exact conclusion this directory exists to prevent.
     """
     import re
     readme = (REPO / "examples" / "README.md").read_text(encoding="utf-8")
@@ -159,7 +160,7 @@ def test_the_digests_printed_in_the_examples_readme_are_the_real_ones():
     assert not stale, (
         "examples/README.md prints digest(s) that no report carries: "
         + ", ".join(stale)
-        + ". Re-run examples/regenerate.py and update the table — a reader "
+        + ". Re-run examples/regenerate.py and update the table: a reader "
         "comparing against these would conclude our published report was faked."
     )
     missing = sorted(real - stated)
@@ -171,33 +172,27 @@ def test_the_digests_printed_in_the_examples_readme_are_the_real_ones():
 
 
 def test_the_readme_try_it_command_reproduces_the_published_digest(tmp_path):
-    """🔴 THE GAP THAT MADE EVERY OTHER TEST IN THIS FILE GREEN OVER A BROKEN DEMO.
+    """The command in the root README's `## Try it` block reproduces the digest
+    published in `examples/README.md`.
 
-    Found 2026-09-02, in a clean anonymous clone of the published repo.
+    The README tells a reader to run one command against
+    `examples/sample_service` and compare `findings_digest` against that table.
+    `--label` is inside the digested body, so the documented command and the
+    arguments `examples/regenerate.py` uses must agree, or the two digests
+    cannot match by construction.
 
-    The root README's `## Try it` block — the page calls it *"the whole pitch"* —
-    told a reader to run::
+    The other tests in this file reproduce via `regenerate.py`'s argv. They
+    verify *the committed report against the tool*, not *the documented command
+    against the published table*. A test that builds its own arguments cannot
+    detect that the arguments in the docs are wrong.
 
-        python -m entrovouch.no_egress_auditor examples/sample_service
-
-    and compare `findings_digest` against the table in `examples/README.md`. It
-    did **not** match. `--label` is inside the digested body, `examples/regenerate.py`
-    passes one and that command did not, so the published table and the documented
-    command could not agree by construction.
-
-    ⭐ **Every guard in this file was green throughout**, because they all reproduce
-    via `regenerate.py`'s argv. They verified *the committed report against the tool*
-    and never *the documented command against the published table*. A test that
-    builds its own arguments cannot detect that the arguments in the docs are wrong —
-    it is a second implementation of the happy path, not a check on the first.
-
-    ⭐ **THE ARGV MUST COME OUT OF THE README.** That is the whole point: if someone
-    edits the command on the page, this fails. If this test hardcoded the command,
-    it would pass over exactly the defect it was written for.
+    **THE ARGV MUST COME OUT OF THE README.** That is the whole point: if someone
+    edits the command on the page, this fails. A hardcoded command here would
+    pass over exactly the mismatch this test exists to catch.
 
     Only `--json <path>` is appended, so the report can be read as data instead of
     scraped from truncated markdown. That flag chooses an output destination and is
-    not part of the report body — asserted below rather than assumed.
+    not part of the report body: asserted below rather than assumed.
     """
     import re
     import shlex
@@ -205,7 +200,7 @@ def test_the_readme_try_it_command_reproduces_the_published_digest(tmp_path):
     readme = (REPO / "README.md").read_text(encoding="utf-8")
 
     section = re.search(r"^## Try it\s*$(.*?)^## ", readme, re.S | re.M)
-    assert section, "README no longer has a '## Try it' section — did the demo move?"
+    assert section, "README no longer has a '## Try it' section: did the demo move?"
     blocks = re.findall(r"```bash\n(.*?)```", section.group(1), re.S)
     assert blocks, "the '## Try it' section shows no bash block for a reader to run"
 
@@ -249,7 +244,7 @@ def test_the_readme_try_it_command_reproduces_the_published_digest(tmp_path):
         f"  published: {published}\n"
         "A prospect following the front page would see a mismatch and reasonably "
         "conclude the published report was fabricated. Fix the command on the page "
-        "or regenerate the reports — do not adjust this test."
+        "or regenerate the reports: do not adjust this test."
     )
 
 
@@ -258,7 +253,7 @@ def test_the_json_flag_does_not_change_the_report_body(tmp_path):
 
     If `--json` ever entered the digested body, the test above would be checking a
     report no reader ever produces, and would go green while the documented path
-    broke — the same substitution it was written to catch, one level down.
+    broke: the same substitution it exists to catch, one level down.
     """
     a = tmp_path / "a.json"
     b = tmp_path / "b.json"
@@ -272,6 +267,6 @@ def test_the_json_flag_does_not_change_the_report_body(tmp_path):
     da = json.loads(a.read_text(encoding="utf-8"))["findings_digest"]
     db = json.loads(b.read_text(encoding="utf-8"))["findings_digest"]
     assert da == db, (
-        f"the output path changed the findings digest ({da} vs {db}) — `--json` is "
+        f"the output path changed the findings digest ({da} vs {db}): `--json` is "
         "not a free action and the README-command guard above is no longer valid."
     )

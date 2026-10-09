@@ -73,7 +73,25 @@ def test_html_external_url_caught(tmp_path):
 
 
 def test_html_case_insensitive_url(tmp_path):
-    _write(tmp_path, "p.html", "<a href='HTTPS://EVIL.COM'>x</a>")
+    _write(tmp_path, "p.html", "<a href='HTTPS://EVIL.COM'>x</a><img src='HTTP://T.EXAMPLE/p.gif'>")
+    rep = audit(tmp_path)
+    assert any(f["kind"] == "html-external" for f in rep.findings)
+
+
+def test_anchor_alone_is_a_link_not_a_load(tmp_path):
+    _write(tmp_path, "p.html", "<a href='https://example.com/docs'>docs</a>")
+    rep = audit(tmp_path)
+    assert [f["kind"] for f in rep.findings] == ["external-link"]
+
+
+def test_protocol_relative_source_is_external(tmp_path):
+    _write(tmp_path, "p.html", '<script src="//cdn.example.com/a.js"></script>')
+    rep = audit(tmp_path)
+    assert any(f["kind"] == "html-external" for f in rep.findings)
+
+
+def test_stylesheet_import_is_external(tmp_path):
+    _write(tmp_path, "a.css", '@import url("https://fonts.example.com/css");\n')
     rep = audit(tmp_path)
     assert any(f["kind"] == "html-external" for f in rep.findings)
 
@@ -81,12 +99,18 @@ def test_html_case_insensitive_url(tmp_path):
 def test_fetch_call_caught(tmp_path):
     _write(tmp_path, "a.js", "fetch('/api')\n")
     rep = audit(tmp_path)
-    assert any(f["kind"] == "html-external" for f in rep.findings)
+    assert any(f["kind"] == "network-call" for f in rep.findings)
+
+
+def test_javascript_imports_are_checked_like_typescript(tmp_path):
+    _write(tmp_path, "a.cjs", "const net = require('node:net'); net.connect(80, 'h');\n")
+    rep = audit(tmp_path)
+    assert {f["kind"] for f in rep.findings} >= {"network-import", "network-call"}
 
 
 def test_docstring_mention_not_flagged(tmp_path):
-    # A module NAME in a docstring/comment must not false-positive (the exact
-    # failure mode the dashboard checker was hardened against).
+    # A module NAME in a docstring/comment must not false-positive: only real
+    # import statements and calls are findings.
     _write(tmp_path, "doc.py", '"""This module does not use requests or socket."""\nimport json\n')
     rep = audit(tmp_path)
     assert rep.verdict == "CLEAN"
@@ -124,11 +148,11 @@ def test_skip_dirs_ignored(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# G1 regression tests — argv-list network binaries + Python telemetry SDKs.
+# argv-list network binaries and Python telemetry SDKs.
 #
-# Both classes were detected in TypeScript and invisible in Python; the auditor's
-# own scope statement named them as blind spots. These tests are the reason the
-# statement could be rewritten.
+# Both classes are detected in Python as they are in TypeScript. The signed
+# scope statement relies on these tests: it does not list either class as a
+# Python blind spot.
 # ---------------------------------------------------------------------------
 
 def test_detects_argv_list_network_binary(tmp_path):
@@ -152,15 +176,16 @@ def test_detects_argv_binary_by_absolute_path_and_exe(tmp_path):
 
 
 def test_bare_git_status_is_not_flagged_as_net_binary(tmp_path):
-    """git's network use is decided by SUBCOMMAND. `git status` must stay clean --
-    false positives are the failure mode that made an earlier audit 7/118 useful."""
+    """git's network use is decided by SUBCOMMAND. `git status` must stay clean:
+    false positives bury the findings that matter."""
     _write(tmp_path, "ok.py", "import subprocess\nsubprocess.run(['git', 'status'])\n")
     rep = audit(tmp_path)
     assert rep.verdict == "CLEAN", [f["detail"] for f in rep.findings]
 
 
 def test_git_push_still_flagged_as_git_remote_not_net_binary(tmp_path):
-    """The pre-existing git-remote path must not be shadowed by the new check."""
+    """A git remote subcommand is reported as `git-remote`, its specific kind. The generic
+    network-binary check must not shadow it."""
     _write(tmp_path, "bad.py", "import subprocess\nsubprocess.run(['git', 'push'])\n")
     rep = audit(tmp_path)
     kinds = {f["kind"] for f in rep.findings}
@@ -169,19 +194,35 @@ def test_git_push_still_flagged_as_git_remote_not_net_binary(tmp_path):
 
 def test_detects_python_telemetry_sdk_import(tmp_path):
     """The category a 'no telemetry' claim is actually about."""
-    for mod in ("sentry_sdk", "posthog", "ddtrace", "opentelemetry", "boto3"):
-        d = tmp_path / mod
+    for mod in ("sentry_sdk", "posthog", "ddtrace", "opentelemetry.exporter.otlp", "boto3"):
+        d = tmp_path / mod.replace(".", "_")
         d.mkdir()
         _write(d, "t.py", f"import {mod}\n")
     rep = audit(tmp_path)
     hits = [f for f in rep.findings if f["kind"] == "network-import"]
-    assert len(hits) >= 5, f"telemetry/cloud SDKs missed: {[f["detail"] for f in hits]}"
+    details = [f["detail"] for f in hits]
+    assert len(hits) >= 5, f"telemetry/cloud SDKs missed: {details}"
 
 
-def test_scope_statement_no_longer_claims_python_blind_spots(tmp_path):
-    """The signed report's scope text must track the code. It previously named
-    these two gaps as un-detected in Python; shipping the fix without updating it
-    would make every signed report understate coverage."""
+def test_a_tracing_interface_is_reported_as_present_and_its_exporter_as_network(tmp_path):
+    """`opentelemetry` at the top level is the interface: it records spans and sends nothing.
+    It is still reported, because a 'no telemetry' reader wants to know it is there. Only an
+    exporter is a network import."""
+    _write(tmp_path, "api.py", "from opentelemetry import trace\nimport opentelemetry\n")
+    _write(tmp_path, "sdk.py", "from opentelemetry.sdk.trace import TracerProvider\n")
+    _write(tmp_path, "out.py", "from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter\n"
+                               "from opentelemetry import exporter\n")
+    by_file = {}
+    for f in audit(tmp_path).findings:
+        by_file.setdefault(f["file"], set()).add(f["kind"])
+    assert by_file == {"api.py": {"network-dependency"}, "sdk.py": {"network-dependency"}, "out.py": {"network-import"}}
+
+
+def test_scope_statement_matches_what_python_detection_covers(tmp_path):
+    """The signed report's scope text must track the code. argv-list network
+    binaries and telemetry SDKs are detected in Python, so the statement must
+    not list them as Python blind spots: that would make every signed report
+    understate coverage."""
     _write(tmp_path, "ok.py", "import json\n")
     rep = audit(tmp_path)
     assert "not yet in Python" not in rep.scope_statement
@@ -192,14 +233,10 @@ def test_scope_statement_no_longer_claims_python_blind_spots(tmp_path):
 # ---------------------------------------------------------------------------
 # Report must never carry the auditor's local filesystem path.
 #
-# A report delivered on 2026-07-31 shipped the auditor's absolute local
-# path inside the SIGNED JSON: OS username, internal workspace name, session
-# UUID. The recipient gains nothing from it and it is unforced disclosure.
-#
-# It survived review because the pre-send leak scan was run against the report
-# DOCX, and the signed JSON was a separate attachment that the scan never
-# looked at. These tests pin the fix at the source, where neither the report
-# format nor the send checklist can drift away from it.
+# An absolute path discloses the auditor's OS username and directory layout.
+# The recipient gains nothing from it and it is unforced disclosure. These
+# tests pin the property at the source, in the signed JSON itself, so it holds
+# for every rendering of the report.
 # ---------------------------------------------------------------------------
 def test_report_target_does_not_leak_absolute_path(tmp_path):
     src = tmp_path / "deep" / "nested" / "myrepo"

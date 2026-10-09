@@ -19,7 +19,7 @@ def _statuses(rep):
     return {c["quantum"] for c in rep.components}
 
 
-# --- PQ-safe stdlib crypto (the EntroVerse baseline) ------------------------------------------------
+# --- PQ-safe stdlib crypto: SHA-3, HMAC and the secrets CSPRNG -------------------------------------
 def test_pq_safe_stdlib_baseline(tmp_path):
     _write(tmp_path, "auth.py",
            "import hashlib, hmac, secrets\n"
@@ -27,7 +27,7 @@ def test_pq_safe_stdlib_baseline(tmp_path):
            "    return hmac.new(k, m, hashlib.sha3_256).hexdigest()\n"
            "n = secrets.token_bytes(32)\n")
     rep = build_cbom(tmp_path)
-    assert rep.verdict == "QUANTUM-SAFE"
+    assert rep.verdict == "NOTHING-VULNERABLE-FOUND"
     assert "HMAC" in _prims(rep)
     assert "SHA3-256" in _prims(rep)
     assert "secrets-CSPRNG" in _prims(rep)
@@ -35,13 +35,13 @@ def test_pq_safe_stdlib_baseline(tmp_path):
 
 
 def test_pq_signature_tokens_detected(tmp_path):
-    # how ENTROVERSE names its PQ schemes in code (scheme strings + class names)
+    # PQ schemes named in code are inventoried: scheme strings and class names
     _write(tmp_path, "pq.py",
            'SCHEME = "lamport-merkle-sha3"\n'
            'class MerkleConsentAuthority: pass\n'
            'ALG = "ML-DSA-65"\n')
     rep = build_cbom(tmp_path)
-    assert rep.verdict == "QUANTUM-SAFE"
+    assert rep.verdict == "NOTHING-VULNERABLE-FOUND"
     prims = _prims(rep)
     assert any("Lamport" in p for p in prims)
     assert any("Merkle" in p or "XMSS" in p for p in prims)
@@ -89,7 +89,7 @@ def test_hashlib_new_string_algo(tmp_path):
     _write(tmp_path, "n.py", "import hashlib\nh = hashlib.new('sha256')\n")
     rep = build_cbom(tmp_path)
     assert "SHA-256" in _prims(rep)
-    assert rep.verdict == "QUANTUM-SAFE"   # sha256 is GROVER-REDUCED, not vulnerable
+    assert rep.verdict == "NOTHING-VULNERABLE-FOUND"   # sha256 is GROVER-REDUCED, not vulnerable
 
 
 # --- the discipline: prose that NAMES an algorithm must not fire ------------------------------------
@@ -100,7 +100,7 @@ def test_docstring_prose_not_flagged(tmp_path):
            "hashlib.sha3_512(b'x')\n")
     rep = build_cbom(tmp_path)
     # the long docstring sentence mentioning RSA/ECDSA is skipped; only the real SHA3-512 use fires
-    assert rep.verdict == "QUANTUM-SAFE"
+    assert rep.verdict == "NOTHING-VULNERABLE-FOUND"
     assert "SHA3-512" in _prims(rep)
     assert not any("RSA" in p for p in _prims(rep))
 
@@ -109,8 +109,8 @@ def test_weak_rng_flagged_informational(tmp_path):
     _write(tmp_path, "r.py", "import random\nrandom.random()\n")
     rep = build_cbom(tmp_path)
     assert any(c["quantum"] == "WEAK-RNG" for c in rep.components)
-    # weak RNG alone doesn't downgrade the verdict below QUANTUM-SAFE (it's informational)
-    assert rep.verdict == "QUANTUM-SAFE"
+    # weak RNG alone doesn't downgrade the verdict below NOTHING-VULNERABLE-FOUND (it's informational)
+    assert rep.verdict == "NOTHING-VULNERABLE-FOUND"
 
 
 def test_library_import_review(tmp_path):
@@ -130,7 +130,7 @@ def test_signature_breaks_on_tamper(tmp_path):
     _write(tmp_path, "a.py", "import hashlib\nhashlib.sha3_256(b'x')\n")
     rep = build_cbom(tmp_path)
     d = asdict(rep)
-    d["verdict"] = "QUANTUM-SAFE-TAMPERED"
+    d["verdict"] = "NOTHING-VULNERABLE-FOUND-TAMPERED"
     assert verify_cbom(d) == (False, "TAMPERED")
 
 
@@ -154,9 +154,9 @@ def test_skip_dirs_ignored(tmp_path):
     _write(tmp_path / "__pycache__", "junk.py", "import rsa\n")
     _write(tmp_path, "ok.py", "import hashlib\nhashlib.sha3_256(b'x')\n")
     rep = build_cbom(tmp_path)
-    assert rep.verdict == "QUANTUM-SAFE"
+    assert rep.verdict == "NOTHING-VULNERABLE-FOUND"
 
 
 def test_empty_dir_no_components(tmp_path):
     rep = build_cbom(tmp_path)
-    assert rep.components == [] and rep.verdict == "QUANTUM-SAFE"
+    assert rep.components == [] and rep.verdict == "NOT-ANALYSED"

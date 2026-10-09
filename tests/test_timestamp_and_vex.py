@@ -3,7 +3,7 @@
 Both modules answer a question the rest of the package cannot, and both are
 constrained by the same rule: **no network operations, ever.** A tool that
 acquired a network client in order to prove it has no network client would be
-self-refuting, so the timestamp work is split — we build the request, you send
+self-refuting, so the timestamp work is split: we build the request, you send
 it, we check what comes back.
 """
 from __future__ import annotations
@@ -27,11 +27,9 @@ REPO = Path(__file__).resolve().parents[1]
 def test_request_is_well_formed_der(tmp_path):
     """Structure, checked by parsing it back rather than by eyeballing bytes.
 
-    ⭐ The stronger check is external and was run by hand during development:
-    `openssl ts -query -in req.tsq -text` parses this output and reports
-    Version 1, sha256, the correct message digest and the nonce. openssl is the
-    reference implementation; agreement with it is conformance, agreement with
-    ourselves would only be self-consistency.
+    This test is self-consistency only. The stronger check is external and is
+    not automated here: `openssl ts -query -in req.tsq -text` should parse the
+    output and report Version 1, sha256, the message digest and the nonce.
     """
     digest = bytes(range(32))
     req, nonce = ts.build_request(digest, nonce=12345)
@@ -62,12 +60,14 @@ def test_cert_req_flag_changes_the_encoding():
 
 
 # ---------------------------------------------------------------------------
-# Imprint checking — and what it deliberately does not do
+# Imprint checking: and what it deliberately does not do
 # ---------------------------------------------------------------------------
 def test_token_containing_the_digest_is_accepted():
     digest = bytes(range(32))
-    fake_token = b"\x30\x82" + b"junk" + digest + b"more junk"
+    fake_token = ts._der_seq(b"junk" + digest + b"more junk")
     assert ts.token_contains_digest(fake_token, digest) is True
+    # the same bytes without the structure around them are not a token
+    assert ts.token_contains_digest(b"junk" + digest + b"more junk", digest) is False
 
 
 def test_token_for_a_different_report_is_rejected():
@@ -76,15 +76,15 @@ def test_token_for_a_different_report_is_rejected():
 
 
 def test_imprint_check_is_not_a_signature_check():
-    """🔴 THE LIMIT, ASSERTED SO IT CANNOT BE QUIETLY FORGOTTEN.
+    """THE LIMIT, ASSERTED SO IT CANNOT BE QUIETLY FORGOTTEN.
 
-    A token whose only virtue is containing the digest passes. That is correct
+    A well-formed structure whose only virtue is containing the digest passes. That is correct
     for the question asked and is NOT verification: this module does not parse
     CMS or validate an X.509 chain, because doing so would import a trust root
     the package exists to avoid. The docstring says so, and so does the CLI.
     """
     digest = bytes(range(32))
-    obviously_forged = b"I am not a real timestamp token" + digest
+    obviously_forged = ts._der_seq(b"I am not a real timestamp token" + digest)
     assert ts.token_contains_digest(obviously_forged, digest) is True
     assert "not a signature" in ts.token_contains_digest.__doc__.lower() or \
            "cannot catch: a forged token" in ts.token_contains_digest.__doc__
@@ -109,7 +109,7 @@ def _cbom(*statuses):
 
 
 def test_every_statement_is_in_triage():
-    """🔴 THE LOAD-BEARING ASSERTION OF THIS WHOLE MODULE.
+    """THE LOAD-BEARING ASSERTION OF THIS WHOLE MODULE.
 
     Exploitability is a property of reachability and static analysis does not
     establish reachability. `exploitable` would claim an analysis that never ran;
@@ -138,14 +138,15 @@ def test_safe_primitives_produce_no_statement():
 
 def test_many_sites_of_one_weakness_are_one_statement():
     """Forty MD5 call sites are one weakness in forty places. A document that
-    inflates the second into the first is the raw-count error this estate has
-    measured before."""
+    reports forty weaknesses misstates the codebase by raw count."""
     many = {"components": [
         {"file": f"f{i}.py", "line": i, "primitive": "MD5", "category": "hash", "quantum": "BROKEN"}
         for i in range(40)]}
     doc = vx.to_vex(many)
     assert len(doc["vulnerabilities"]) == 1
-    assert "40 site(s)" in doc["vulnerabilities"][0]["affects"][0]["ref"]
+    assert "40 site(s)" in doc["vulnerabilities"][0]["properties"][0]["value"]
+    # what a statement affects is the subject named in the document, by its bom-ref
+    assert doc["vulnerabilities"][0]["affects"] == [{"ref": doc["metadata"]["component"]["bom-ref"]}]
 
 
 def test_key_provenance_adds_one_hardcoded_credential_statement():
@@ -169,10 +170,10 @@ def test_vex_validates_against_the_pinned_cyclonedx_schema():
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("mod", ["entrovouch/timestamp.py", "entrovouch/vex.py"])
 def test_new_modules_are_still_zero_egress(mod):
-    """⭐ The package's central claim, re-asserted against its newest code.
+    """The package's central claim, asserted for the timestamp and VEX modules.
 
     A timestamp module is exactly where a network client would arrive by
-    accident — fetching the token is the obvious next line to write, and it is
+    accident: fetching the token is the obvious next line to write, and it is
     the one line that would break the property everything else rests on.
     """
     from dataclasses import asdict

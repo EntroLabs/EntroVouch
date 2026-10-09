@@ -1,9 +1,10 @@
-"""CycloneDX 1.6 export, and the four defects the CBOM module never received.
+"""CycloneDX 1.6 export, and the report properties the CBOM shares with the auditor.
 
-Every fix asserted here had ALREADY been made in `no_egress_auditor.py` and had
-not reached `cbom.py`. That is the third instance in one session of a fix scoped
-to the file it was found in, so these tests exist as much to pin the *class* as
-the individual bugs.
+The first section pins, for `cbom.py`, the same properties
+`no_egress_auditor.py` guarantees for its reports: no absolute path, a label
+that overrides the directory name, a bound subject, a reproducible findings
+digest, and fail-closed verification. A property that holds in one report type
+and not the other is a gap, so each is asserted here separately.
 """
 from __future__ import annotations
 
@@ -28,26 +29,26 @@ SRC = REPO / "entrovouch"
 
 
 # ---------------------------------------------------------------------------
-# The four fixes that never reached this module
+# Report properties shared with the no-egress auditor
 # ---------------------------------------------------------------------------
 def test_cbom_never_emits_an_absolute_path():
-    """A CBOM is handed to a counterparty.
-
-    Until 2026-08-20 this wrote `str(target)`, so a delivered document carried
-    the auditor's drive letter, OS username and internal workspace name. The
-    no-egress auditor had been fixed for exactly this weeks earlier.
+    """A CBOM is handed to a counterparty, so it must not carry the auditor's
+    drive letter, OS username or directory layout. The target is recorded as
+    the directory's name, never as its path.
     """
     rep = build_cbom(SRC.resolve())
     assert rep.target == "entrovouch"
     blob = json.dumps(asdict(rep))
     for leak in (":\\", ":/", "Users", "home/"):
         assert leak not in rep.target, f"target leaks {leak!r}"
-    # ⭐ Assembled, not spelled. A leak test must name what it forbids, which
-    # means a plain literal here would ship the very string the guard exists
-    # to keep out of a PUBLIC repo. Found 2026-08-22 while verifying that a
-    # clean single-commit history carried none of it — and it still did,
-    # inside the guards.
-    assert "".join(("Cowork", "_Workspace")) not in blob
+    # The whole serialised document, not only the target field, must be free
+    # of the audited directory's absolute path and of its parent's. Both the
+    # native and the forward-slash spelling are checked, raw and JSON-escaped.
+    audited = SRC.resolve()
+    for local in (audited, audited.parent):
+        for spelled in (str(local), local.as_posix()):
+            assert spelled not in blob, "the report leaks a local path"
+            assert json.dumps(spelled)[1:-1] not in blob, "the report leaks a local path"
 
 
 def test_cbom_label_overrides_the_directory_name():
@@ -140,7 +141,8 @@ def test_scope_and_binding_travel_inside_the_standard_artifact(bom):
     assert props["entrovouch:scopeStatement"], "a CBOM without scope reads as completeness"
     assert props["entrovouch:verdict"]
     assert len(props["entrovouch:subjectDigest"]) == 64
-    assert bom["metadata"]["component"]["hashes"][0]["alg"] == "SHA3-256"
+    # the tree digest is not presented as a hash of an artifact
+    assert "hashes" not in bom["metadata"]["component"]
 
 
 def test_conformance_with_unpublished_minimum_elements_is_not_claimed(bom):

@@ -2,16 +2,13 @@
 
 WHY THIS FILE EXISTS
 --------------------
-The README said "# 33 tests" when there were 146. On 2026-08-19 that was corrected
-to 146, then to 151, then to 155 — stale again twice within the hour, each time by
-the person fixing it. A number written by hand in prose and maintained by memory
-goes stale on the next commit, every time.
-
-So the number is asserted instead of remembered. If you add a test and do not
-update the README, this fails and tells you the new figure.
+A number written by hand in prose and maintained by memory goes stale on the
+next commit. So the README's test count is asserted instead of remembered. If
+you add a test and do not update the README, this fails and tells you the new
+figure.
 
 Scope note, stated because it is the honest limit: this checks the claims a
-machine can settle — the test count and the module paths the README tells a reader
+machine can settle: the test count and the module paths the README tells a reader
 to run. It cannot check whether the prose is *true*, only whether it is
 *consistent with the code beside it*.
 """
@@ -50,15 +47,14 @@ def _module_usable(stmt: str) -> bool:
 def _hypothesis_available() -> bool:
     """Is the optional extra USABLE? Not: does the name import.
 
-    🔴 The first version of this asked `import hypothesis`, and that is the exact
-    defect it exists to detect, committed one level up. A leftover empty directory
-    imports fine as an implicit namespace package (`__file__ is None`) while
-    `from hypothesis import given` still fails — so this reported AVAILABLE, the
-    caller expected the with-extras count, and the suite failed for a reason that
-    had nothing to do with the README.
+    `import hypothesis` is not enough. A leftover empty directory imports fine as
+    an implicit namespace package (`__file__ is None`) while
+    `from hypothesis import given` still fails. Asking for the bare name would
+    report AVAILABLE, the caller would expect the with-extras count, and the
+    suite would fail for a reason that has nothing to do with the README.
 
-    ⭐ Ask for what the code actually needs. A guard that checks something cheaper
-    than the real requirement will pass in exactly the states you wrote it for.
+    Ask for what the code actually needs. A guard that checks something cheaper
+    than the real requirement passes in states where the requirement is not met.
     """
     return _module_usable("from hypothesis import given")
 
@@ -84,28 +80,24 @@ def _collect_suite(rel: str) -> int:
 def test_readme_test_count_is_current():
     """The README states TWO counts, and this asserts the one that applies here.
 
-    🔴 WHY THIS IS NOT A SINGLE NUMBER — the defect it replaces, 2026-08-30.
-    It was `claimed == actual` against the single figure `# 261 tests`, which is
-    the count *with* the optional `hypothesis` extra. The pyproject deliberately
-    makes that extra optional so a sceptical reader can clone and run with no
-    installs — so **the documented path failed**, and failed by reporting
-    "README claims 261 tests; pytest collects 255", i.e. accusing the document of
-    the environment's shortfall.
+    WHY THIS IS NOT A SINGLE NUMBER. The pyproject deliberately makes the
+    `hypothesis` and `jsonschema` extras optional so a sceptical reader can clone
+    and run with only pytest. A single figure compared with `claimed == actual`
+    would be the with-extras count, so the documented clean-clone path would
+    fail, and fail by accusing the document of the environment's shortfall.
 
-    ⭐ That is the CANT-RUN-vs-FAIL distinction, in the one repository where a red
-    suite is most expensive: this package's whole argument is *re-run it yourself*.
-    A guard that cannot separate "this is wrong" from "this could not be checked
-    here" will eventually report the second as the first.
+    This package's whole argument is *re-run it yourself*, so the guard must
+    separate "this is wrong" from "this could not be checked here".
 
-    The cause underneath it: `tests/test_properties.py` calls `importorskip` at
-    MODULE level, so without `hypothesis` the entire file contributes **zero**
-    tests and says nothing. Only the count noticed.
+    The mechanism: the optional suites call `importorskip` at MODULE level, so
+    without the extra the entire file contributes **zero** tests and says
+    nothing. Only the count notices.
     """
-    base = re.search(r"#\s*(\d+)\s+tests, no installs", README)
+    base = re.search(r"#\s*(\d+)\s+tests, pytest only", README)
     full = re.search(r"re-run for \*\*(\d+)\*\*", README)
     assert base and full, (
-        "README must state BOTH counts — the clean-clone figure as "
-        "'# N tests, no installs' and the with-extras figure as 're-run for **N**'"
+        "README must state BOTH counts: the clean-clone figure as "
+        "'# N tests, pytest only' and the with-extras figure as 're-run for **N**'"
     )
     base_n, full_n = int(base.group(1)), int(full.group(1))
     assert full_n > base_n, (
@@ -134,33 +126,29 @@ def test_readme_test_count_is_current():
 def test_optional_suites_are_not_silently_empty():
     """A module-level `importorskip` removes a whole FILE with no notice.
 
-    This is the check that would have caught the defect above at its source rather
-    than three steps downstream in a count. It asserts the two numbers differ by
-    exactly the number of tests the optional file actually contains, so a property
-    suite that quietly stops contributing anything cannot pass unnoticed.
+    This checks that at its source rather than downstream in a total. It asserts
+    the README's two numbers differ by exactly the number of tests the optional
+    files actually contain, so an optional suite that quietly stops contributing
+    anything cannot pass unnoticed.
 
-    ⛔ It can only run when the extra IS installed — when it is not, the tests it
+    It can only run when the extra IS installed: when it is not, the tests it
     counts do not exist to be counted. It skips rather than passing, because a
-    check that reports success without running is the thing this file exists about.
+    check that reports success without running is the thing this file guards
+    against.
     """
     import pytest
     OPTIONAL = [
         ("tests/test_properties.py", _hypothesis_available()),
-        ("tests/test_cyclonedx_schema.py", _jsonschema_available()),
+        ("tests/test_cyclonedx_schema.py", _jsonschema_available() and _module_usable("import referencing")),
         ("tests/test_sarif_schema.py", _jsonschema_available()),
     ]
     if not any(ok for _s, ok in OPTIONAL):
-        pytest.skip("no optional extras — cannot count the extra suites here")
+        pytest.skip("no optional extras: cannot count the extra suites here")
 
-    # ⚠️ GENERALISED 2026-08-30: this counted `tests/test_properties.py` ALONE,
-    # because when it was written that was the only suite behind an optional
-    # extra. Adding the SARIF schema suite made a THIRD, and the guard failed
-    # while both the README and the repository were correct — it was the guard's
-    # model of the repository that had gone stale.
-    #
-    # ⭐ The reusable form: a check that hardcodes the members of a set silently
-    # becomes wrong when the set grows. Derive the set instead. Any suite that
-    # skips at module level for a missing extra belongs here automatically.
+    # Every suite that skips at module level for a missing extra is listed in
+    # OPTIONAL and checked the same way. A check that covers one member of the
+    # set becomes wrong when the set grows, so a new optional suite belongs in
+    # that list.
     for suite, extra_ok in OPTIONAL:
         n = _collect_suite(suite)
         if extra_ok:
@@ -172,12 +160,13 @@ def test_optional_suites_are_not_silently_empty():
                 f"{suite} collected {n} tests while its extra is missing"
             )
 
-    src_n = 0
-    for suite, _ok in OPTIONAL:
-        text = (REPO / suite).read_text(encoding="utf-8")
-        src_n += len(re.findall(r"^def test_", text, re.M))
+    # Count what pytest COLLECTS, the number a reader sees, not `^def test_` lines: a regex over source misses
+    # parametrized expansions, so it undercounts.
+    if not all(ok for _s, ok in OPTIONAL):
+        pytest.skip("not every optional extra is installed: the full optional count cannot be measured here")
+    src_n = sum(_collect_suite(suite) for suite, _ok in OPTIONAL)
 
-    base = int(re.search(r"#\s*(\d+)\s+tests, no installs", README).group(1))
+    base = int(re.search(r"#\s*(\d+)\s+tests, pytest only", README).group(1))
     full = int(re.search(r"re-run for \*\*(\d+)\*\*", README).group(1))
     assert full - base == src_n, (
         f"the README's two counts differ by {full - base}, but the optional "
@@ -186,9 +175,10 @@ def test_optional_suites_are_not_silently_empty():
 
 
 def test_readme_module_paths_are_runnable():
-    """Every `python -m X` the README shows must name a real module."""
-    modules = set(re.findall(r"python -m ([a-z_][\w.]*)", README)) - {"pytest"}
-    assert modules, "README shows no `python -m` invocations — did the usage section move?"
+    """Every `python -m entrovouch...` the README shows must name a real module. (The README also names commands the
+    auditor recognises in the code it reads, `python -m build` among them: those are not this package's to run.)"""
+    modules = set(re.findall(r"python -m (entrovouch[\w.]*)", README))
+    assert modules, "README shows no `python -m` invocations: did the usage section move?"
     for mod in sorted(modules):
         r = subprocess.run(
             [sys.executable, "-m", mod, "--help"],
@@ -202,22 +192,13 @@ def test_readme_module_paths_are_runnable():
 
 
 def test_every_runnable_module_is_documented():
-    """The OTHER direction — and it is the one that was missing.
+    """The OTHER direction: every runnable module is documented.
 
-    The guard above asserts every DOCUMENTED command exists. It never asserted
-    that every command is DOCUMENTED, so a tool could ship complete, tested and
-    invisible. On 2026-08-21 that was live: `key_provenance` had a row in the
-    README's tool table and no `python -m` line anywhere, making it 1 of 6
-    CLI-capable modules a reader is never told how to run.
-
-    ⭐ The gap was NAMED in the 2026-08-20 session record ("it asserts every
-    documented command exists, not that every command is documented") and left
-    open. A predicted defect that nobody converted into a check is just a
-    defect with better paperwork. This is the check.
-
-    It landed on `key_provenance` — the detector that found the forgeable
-    signature in this package's own predecessor, so of the six it was the worst
-    one to hide.
+    The guard above asserts every DOCUMENTED command exists. It does not assert
+    that every command is DOCUMENTED, so on its own a tool could ship complete,
+    tested and invisible: a reader is never told how to run it. This asserts
+    that every module with a `__main__` entry point has a `python -m` line in
+    the README.
     """
     documented = set(re.findall(r"python -m ([a-z_][\w.]*)", README))
     pkg = REPO / "entrovouch"
@@ -236,7 +217,7 @@ def test_every_runnable_module_is_documented():
 def test_readme_imports_resolve():
     """Every `from X import Y` the README shows must actually import."""
     pairs = re.findall(r"from (entrovouch[\w.]*) import ([\w, ]+)", README)
-    assert pairs, "README shows no entrovouch imports — did the usage section move?"
+    assert pairs, "README shows no entrovouch imports: did the usage section move?"
     for mod, names in pairs:
         for name in [n.strip() for n in names.split(",") if n.strip()]:
             r = subprocess.run(
@@ -274,11 +255,11 @@ EXPECTED_HEADINGS = [
     "## Use",
     "### Adapters",
     "### Reproducing a report",
-    "## What it will not do",
-    "### How often is it wrong?",
-    "### And how often does it MISS?",
-    "### What kind of assurance this is",
     "### Exit codes",
+    "## What a result means",
+    "### What kind of assurance this is",
+    "### How often is it wrong?",
+    "### How often does it miss?",
     "## Signing",
     "### The publisher's public root",
     "## Independently issued audits",
@@ -287,25 +268,20 @@ EXPECTED_HEADINGS = [
 
 
 def test_readme_sections_are_all_present_and_in_order():
-    """🔴 THE GUARD THAT WAS MISSING WHEN TWO SECTIONS WERE DELETED BY ACCIDENT.
+    """The README's section structure is pinned, heading by heading, in order.
 
-    On 2026-08-31 a whole-file rewrite intended to strip decorative emoji also
-    removed **"And how often does it MISS?"** (the recall measurement, the
-    named blind spot and the entire *Honest limits* list) and **"What kind of
-    assurance this is"** (the ISAE 3000 / SSAE 18 limited-assurance statement).
-    Those are the two most load-bearing disclosures on the page.
+    The sections include the page's load-bearing disclosures: "And how often
+    does it MISS?" (the recall measurement and the named blind spots) and "What
+    kind of assurance this is" (the limited-assurance statement). An edit that
+    drops one of them must fail a test.
 
-    🔴 **The full suite passed over the damaged file**, and so did the one guard
-    that existed: `test_readme_states_underapproximation` asserts the substring
-    `"underapproximat"` appears somewhere. The word occurs three times; the
-    deletion removed two and left one, so the guard was satisfied by a survivor
-    while the measurement it describes was gone.
-
-    ⭐ A SUBSTRING IS NOT A STRUCTURE. Checking that a word still appears cannot
-    tell you a section still exists. This asserts the structure instead.
+    A SUBSTRING IS NOT A STRUCTURE. Checking that a word such as
+    "underapproximat" still appears cannot tell you a section still exists,
+    because the word can survive elsewhere on the page. This asserts the
+    structure instead.
 
     If you are legitimately adding or renaming a section, update this list in
-    the same commit — that is the point, not an obstacle: it makes removing a
+    the same commit: that is the point, not an obstacle: it makes removing a
     disclosure a deliberate, reviewable act rather than a side effect.
     """
     actual = _headings(README)
@@ -323,7 +299,7 @@ def test_readme_keeps_the_disclosures_that_carry_the_measurements():
     its title."""
     for needle in (
         "0/59",                    # tier A' held-out recall
-        "2/10",                    # tier C adversarial recall
+        "7/10",                    # tier C adversarial recall, pinned by test_detection_scope
         "limited assurance",       # the assurance level, in the profession's words
         "nothing came to our attention",
         "REVIEW` means review",

@@ -1,8 +1,8 @@
 """SARIF 2.1.0 and in-toto Statement export.
 
 These two formats are how this tool reaches consumers who will never read its
-README. The tests therefore check the things a CONSUMER depends on — required
-keys, stable identity, and honest labelling of what we do not sign — rather
+README. The tests therefore check the things a CONSUMER depends on: required
+keys, stable identity, and honest labelling of what we do not sign: rather
 than only that the functions return something.
 """
 from __future__ import annotations
@@ -29,7 +29,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 @pytest.fixture(scope="module")
 def dirty_report(tmp_path_factory):
-    """A tree with real findings — an empty result set proves very little."""
+    """A tree with real findings: an empty result set proves very little."""
     d = tmp_path_factory.mktemp("dirty")
     (d / "leaky.py").write_text(
         "import requests\n"
@@ -107,7 +107,7 @@ def test_sarif_carries_scope_and_binding(dirty_report):
 
 
 def test_sarif_level_is_not_inferred(dirty_report):
-    """Severity is the consumer's policy, not ours — but it is overridable."""
+    """Severity is the consumer's policy, not ours: but it is overridable."""
     assert all(r["level"] == "warning" for r in to_sarif(dirty_report)["runs"][0]["results"])
     strict = to_sarif(dirty_report, level="error")
     assert all(r["level"] == "error" for r in strict["runs"][0]["results"])
@@ -126,8 +126,9 @@ def test_statement_shape(dirty_report):
     st = to_statement(dirty_report)
     assert st["_type"] == STATEMENT_TYPE == "https://in-toto.io/Statement/v1"
     assert st["predicateType"] == PREDICATE_TYPE_AUDIT
-    assert st["subject"] == dirty_report["subject"]
-    assert st["subject"][0]["digest"]["sha3-256"]
+    # the report's subject, with SHA3-256 under in-toto's name for it
+    assert st["subject"] == [dict(e, digest={"sha3_256": e["digest"]["sha3-256"]}) for e in dirty_report["subject"]]
+    assert set(st["subject"][0]["digest"]) == {"sha3_256"}
 
 
 def test_predicate_excludes_envelope_fields(dirty_report):
@@ -180,13 +181,10 @@ def test_new_modules_do_not_break_the_self_audit():
 def test_new_modules_import_nothing_outside_stdlib():
     """Zero dependencies is the property that makes the no-egress claim checkable.
 
-    Uses the AST, not line matching — the same discipline the auditor itself
-    applies. The first version of this test scanned lines and FAILED on its own
-    module docstring, because a sentence in `sarif.py` wraps such that a line
-    begins "from nobody." That is precisely the false-positive class the
-    README claims the tool avoids ("a docstring that mentions `requests` does
-    not fire"), reproduced in a test written to check that tool. A scanner that
-    reads prose as code is the thing being guarded against.
+    Uses the AST, not line matching: the same discipline the auditor itself
+    applies. A line scan would misfire on prose, because a docstring sentence
+    can wrap so that a line begins with "from". A scanner that reads prose as
+    code is the thing being guarded against.
     """
     import ast
 

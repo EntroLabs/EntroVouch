@@ -1,11 +1,11 @@
-"""Regressions for the 2026-08-20 hardening pass.
+"""Verification fails closed, and the signature construction is frozen.
 
-Every test here corresponds to a defect that was DEMONSTRATED BY EXECUTION
-against the published tool before it was fixed — not to a defect that was
-imagined and pre-empted. Where a test pins a constant, the constant was
-computed from the implementation and then frozen, so a future refactor that
-silently changes the construction fails here instead of silently invalidating
-every signature ever issued.
+Each test executes a concrete attack or failure against the tool: a report
+fabricated from public material, a changed tree under an unchanged label, a
+hostile keyfile, a crash between signing and saving. Where a test pins a
+constant, the constant is computed from the implementation and frozen, so a
+refactor that silently changes the construction fails here instead of silently
+invalidating every signature issued under a published root.
 """
 from __future__ import annotations
 
@@ -23,8 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from entrovouch.no_egress_auditor import (  # noqa: E402
     AuditReport, audit, canonical_body, reproducible_body, verify_report,
-    _DEFAULT_COVENANT,
 )
+
+# the published motto an earlier version keyed a MAC with; kept here so the forgery it allowed stays refused
+_DEFAULT_COVENANT = "Optimize systems for people, not margin extraction. One Covenant. Always."
 from entrovouch.signer import (  # noqa: E402
     MerkleSigner, SignerError, verify_signature, _LEAF_TAG, _NODE_TAG,
     _MAX_HEIGHT,
@@ -34,16 +36,16 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 # ---------------------------------------------------------------------------
-# 1. THE FORGERY THAT USED TO VERIFY
+# 1. A REPORT FORGED FROM PUBLIC MATERIAL
 # ---------------------------------------------------------------------------
 def test_forged_unsigned_report_is_rejected():
     """A report fabricated from published material must not verify.
 
-    Before 2026-08-20 this exact construction returned `(True, "UNSIGNED")`.
-    The HMAC that validated it was keyed by `sha3_256(_DEFAULT_COVENANT)` — and
-    `_DEFAULT_COVENANT` is a string literal in this repository, so the "key"
-    was public. A caller writing `if verify_report(r)[0]:` accepted a CLEAN
-    verdict for a codebase that was never scanned.
+    The forgery carries a correct content hash and an HMAC keyed by
+    `sha3_256(_DEFAULT_COVENANT)`. `_DEFAULT_COVENANT` is a string literal in
+    this repository, so that key is public and the tag proves nothing. A caller
+    writing `if verify_report(r)[0]:` must not accept a CLEAN verdict for a
+    codebase that was never scanned, so `ok` is False for anything unsigned.
     """
     fake = asdict(AuditReport(
         target="victim-corp/flagship@deadbeef",
@@ -52,6 +54,9 @@ def test_forged_unsigned_report_is_rejected():
         verdict="CLEAN",
         findings=[],
     ))
+    # every self-consistency value a forger can compute without a key: the findings digest and the content hash
+    fake["subject"] = [{"name": fake["target"], "digest": {"sha3-256": fake["subject_digest"]}}]
+    fake["findings_digest"] = hashlib.sha3_256(reproducible_body(fake)).hexdigest()
     body = canonical_body(fake)
     fake["content_hash"] = hashlib.sha3_256(body).hexdigest()
     fake["integrity_tag"] = hmac.new(
@@ -86,7 +91,7 @@ def test_integrity_tag_is_not_consulted():
 
 
 # ---------------------------------------------------------------------------
-# 2. THE REPORT NOW BINDS THE TREE, NOT JUST THE SENTENCE
+# 2. THE REPORT BINDS THE TREE, NOT JUST THE SENTENCE
 # ---------------------------------------------------------------------------
 def test_subject_digest_binds_the_audited_tree(tmp_path):
     """Two different trees under one label must not produce one report."""
@@ -117,7 +122,7 @@ def test_subject_follows_in_toto_statement_shape():
 
 
 # ---------------------------------------------------------------------------
-# 3. REPRODUCIBILITY — the property the product is sold on
+# 3. REPRODUCIBILITY: the property the product is sold on
 # ---------------------------------------------------------------------------
 def test_findings_digest_is_reproducible_across_runs():
     """Same tree, three runs: one findings digest, three content hashes."""
@@ -150,10 +155,10 @@ def test_leaf_and_node_domains_differ():
 def test_signer_known_answer_root():
     """KAT: freeze the construction.
 
-    Nothing in the pre-existing suite pinned a root, so the domain-separation
-    change altered every `public_root` and 158 tests still passed. A refactor
-    that changes the hash graph must fail HERE, loudly, rather than silently
-    invalidating every signature previously issued under a published root.
+    Round-trip tests pass for any self-consistent construction, so they cannot
+    notice the hash graph changing. A refactor that alters it changes every
+    `public_root`, and it must fail HERE, loudly, rather than silently
+    invalidating every signature issued under a published root.
     """
     signer = MerkleSigner(seed=bytes(range(32)), height=2, next_index=0, path=None)
     assert signer.public_root == (
@@ -176,8 +181,8 @@ def test_signature_still_round_trips_under_domain_separation():
 def test_index_is_persisted_before_the_secret_is_revealed(tmp_path):
     """The used index must reach disk BEFORE any Lamport preimage exists.
 
-    The old order was sign-then-save: a crash in between left the index
-    unrecorded, the next process reused the leaf, and reusing a Lamport leaf
+    With a sign-then-save order, a crash in between leaves the index
+    unrecorded, the next process reuses the leaf, and reusing a Lamport leaf
     leaks half of each key pair. This asserts the on-disk state has already
     advanced by the time a caller holds a signature.
     """
@@ -214,14 +219,14 @@ def test_verifier_rejects_out_of_range_height():
 
 
 # ---------------------------------------------------------------------------
-# 6. THE TOOL STILL PASSES ITS OWN AUDIT
+# 6. THE TOOL PASSES ITS OWN AUDIT
 # ---------------------------------------------------------------------------
 def test_auditor_still_clean_on_itself():
     rep = audit(REPO / "entrovouch", label="self")
     assert rep.verdict == "CLEAN", f"self-audit regressed: {rep.findings}"
 
 
-def test_cli_still_runs_after_hardening():
+def test_cli_runs_and_reports_unsigned():
     r = subprocess.run(
         [sys.executable, "-m", "entrovouch.no_egress_auditor", str(REPO / "entrovouch")],
         capture_output=True, text=True, cwd=str(REPO), timeout=180,
@@ -232,27 +237,24 @@ def test_cli_still_runs_after_hardening():
 
 
 # ---------------------------------------------------------------------------
-# 7. FOUND BY MUTATION PROBE, 2026-08-21
+# 7. SECURITY CONSTANTS PINNED TO ABSOLUTE VALUES
 #
-# `mutation_probe.py` mutated signer.py and found three surviving mutants — lines
-# the suite EXECUTES but does not CHECK. Two were real, and both sat on
-# security-relevant constants.
+# These pin lines the suite would otherwise EXECUTE without CHECKING: a mutated
+# constant must fail a test.
 #
-# ⭐ THE SHARPER ONE IS `_MAX_HEIGHT`, AND THE REASON IT SURVIVED IS THE DAY'S
-# CENTRAL DEFECT ONE LEVEL DOWN. `test_verify_rejects_absurd_height` above does:
+# `test_verifier_rejects_out_of_range_height` above does:
 #
 #       sig["height"] = _MAX_HEIGHT + 1
 #
-# It computes the out-of-range value FROM the constant it is meant to pin. Change
-# the constant from 20 to 21 and the test recomputes and still passes — it is
-# self-referential, exactly like the "known-answer vectors" that turned out to be
-# our own output. It proves the bound is ENFORCED; it cannot notice the bound
+# It computes the out-of-range value FROM the constant it exercises. Change the
+# constant from 20 to 21 and that test recomputes and still passes: it is
+# self-referential. It proves the bound is ENFORCED; it cannot notice the bound
 # MOVING, and the bound is what stops a hostile keyfile from hanging the process.
 # ---------------------------------------------------------------------------
 def test_max_height_is_pinned_to_an_absolute_value():
     """The bound must be checkable without reference to itself.
 
-    20 means a tree of 2**20 leaves and ~1e6 SHA3 operations to build — bounded
+    20 means a tree of 2**20 leaves and ~1e6 SHA3 operations to build: bounded
     work. Raising it is a denial-of-service surface, so the number is a security
     parameter and a change to it must be deliberate and visible, not silent.
     """
@@ -272,12 +274,11 @@ def test_absurd_height_is_rejected_at_an_absolute_value():
 
 
 def test_a_fresh_signer_starts_at_leaf_zero():
-    """Nothing asserted this, and leaf indexing is one-time-key bookkeeping.
+    """Leaf indexing is one-time-key bookkeeping, so its starting point is pinned.
 
-    Mutating `next_index: int = 0` to 1 survived the whole suite. A signer that
-    silently starts at leaf 1 wastes a one-time key — not catastrophic on its own,
-    but it means index initialisation was entirely unverified, in a scheme where
-    REUSING a leaf leaks half of that key pair. The bookkeeping deserves a pin.
+    A signer that silently starts at leaf 1 wastes a one-time key: not
+    catastrophic on its own, but index initialisation matters in a scheme where
+    REUSING a leaf leaks half of that key pair. Leaves are spent in order from 0.
     """
     signer = MerkleSigner(seed=b"\x02" * 32, height=3, path=None)
     assert signer.next_index == 0, "a fresh signer must begin at leaf 0"

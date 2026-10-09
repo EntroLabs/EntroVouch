@@ -1,26 +1,30 @@
-# ENTROVOUCH No-Egress Audit — FINDINGS
+# ENTROVOUCH No-Egress Audit: FINDINGS
 
 - **Target:** `entrovouch/examples/sample_service`
-- **Scanned:** 2026-09-01T22:33:54.676452+00:00
-- **Files scanned:** 7
-- **Resolved locally, NOT counted as network imports:** `motor` — this tree supplies a top-level module of each name, which shadows any installed package. Check these if the tree vendors dependencies.
-- **Findings:** 2
-- **Findings digest (reproduces):** `505e9bdfecedb54a38919dc6f710a126…`
-- **Subject digest (binds the code):** `9919e0bddd5cd02013d90fbb4ad235be…`
-- **Content hash (this issuance only, does NOT reproduce):** `29cf2449f3d78fbdfaf263e3a86935dc…`
+- **Scanned:** 2026-10-09T02:03:35.903032+00:00
+- **Files scanned:** 7 (1 more were not read: skipped directories, types this tool has no reader for, and links, listed below)
+- **Resolved locally, NOT counted as network imports:** `motor`: this tree supplies a top-level module of each name, which shadows any installed package. Check these if the tree vendors dependencies.
+- **Imported, and not known to this tool (2):** `cryptography`, `jwt`. These third-party modules are on none of this tool's lists, so it says nothing about what they do. Check them against what you know they are.
+- **Files of types this tool does not read:** 1 (`.md` (1))
+- **Parsed with:** Python 3.14
+- **Findings:** 3
+- **Findings digest (reproduces):** `a91fca2e94d1dadb6b9378bcfda1d7798576c50c0eba6ce57f9e9bcb93f45097`
+- **Subject digest (binds the files this audit read):** `a19a74eacd9be59d4545aec928772b5e6a745c65f029969df244700c84fdc269`
+- **Content hash (this issuance only, does NOT reproduce):** `338401a09da7a692ba59b482428db0bf…`
 - **Signature:** UNSIGNED - content hash only, origin NOT attested
 
 > ⚠️ **This report is NOT attested.** The content hash proves the body matches its own digest; it proves nothing about who produced it, because anyone can recompute it. Do not rely on this document as evidence of source.
 
-> **How to reproduce this report:** re-run the same tool version against the same tree and compare **`findings digest`** — it is bit-identical across runs, processes and machines. Do NOT compare the content hash: it covers the issuance timestamp and is *expected* to differ on every run. A different content hash with an identical findings digest is the same result, issued twice.
+> **How to reproduce this report:** re-run the same tool version against the same tree with the same label and compare **`findings digest`**: it is bit-identical across runs, processes and machines. Do NOT compare the content hash: it covers the issuance timestamp and is *expected* to differ on every run. A different content hash with an identical findings digest is the same result, issued twice.
 
-> **Scope:** Static analysis of Python, TypeScript and HTML/JS. Catches the realistic/accidental egress class plus common deliberate patterns (network-capable imports, git remote subcommands, shell=True and os.system/popen, child_process, dynamic import/exec/eval, external references, network binaries spawned via argv list, telemetry/APM and cloud SDK imports). Does NOT mathematically prove zero egress in a Turing-complete language. Known blind spots, stated rather than implied: detection is BLOCKLIST-BASED, so it is complete only against names it knows -- a renamed, vendored or dynamically-constructed module or argv entry is invisible, and a blocklist can never be complete by construction. MEASURED 2026-08-31: against 59 network libraries chosen WITHOUT reference to the blocklist, recall is 0%, and it stayed 0% after the list was extended by 46 names -- so a PLAIN, unobfuscated `import X` of a library this tool does not name is invisible, exactly like an obfuscated one. Check FORBIDDEN_IMPORT_MODULES against your own dependencies before reading anything into a CLEAN verdict. Files that fail to parse are reported as `unparseable-source` findings and were NOT analysed. An import is NOT counted as a network import when the tree itself supplies a top-level module of that name, because that module shadows any installed package; every such name is listed in `shadowed_imports`, so a network client VENDORED into the tree root appears there rather than disappearing. Declared dependencies in pyproject.toml, requirements*.txt, setup.cfg and package.json that name a known network package are reported as `declared-network-dependency`: evidence the tree depends on that package, not a claim that a call site reaches the network. Non-literal arguments (variables, f-strings, lists built at runtime) are not resolved. This report is therefore DETECTION-grade evidence and does not support an unqualified claim of absence.
+> **Scope:** Static analysis of Python (including notebooks, .pth files and shebang scripts), JavaScript, TypeScript, markup, stylesheets, shell, PowerShell and batch scripts, Dockerfiles, Makefiles, pipeline definitions and dependency manifests. It reports network-capable imports, calls that connect or listen, process spawns that reach a network binary, shell strings, dynamic code loading, native calls, external references, network commands in scripts, and declared network dependencies and remote sources. It does NOT prove zero egress: this is a Turing-complete language and the analysis underapproximates. Detection is BLOCKLIST-BASED, so it is complete only against names it knows: a renamed, vendored or dynamically-constructed module or argv entry is invisible. Measured against network libraries chosen without reference to the list, recall is 0%, so a PLAIN, unobfuscated `import X` of a library this tool does not name produces no finding, exactly like an obfuscated one. Check FORBIDDEN_IMPORT_MODULES against your own dependencies before reading anything into a CLEAN verdict. Every third-party module the Python in the tree imports that is on none of this tool's lists is named in `unlisted_imports` (for JavaScript and TypeScript packages, `unlisted_js_imports`): the verdict covers the names the tool knows, and that field lists the ones it does not. Files that fail to parse are reported as `unparseable-source` and were NOT analysed. Directories skipped by name, files of types this tool has no reader for (configuration data, other languages, lockfiles) and symbolic links are listed under `not_scanned` and counted in `files_not_read`; a tree in which nothing was read is NOT-ANALYSED rather than CLEAN. An import is NOT counted as a network import when the tree itself supplies a top-level module of that name, because that module shadows any installed package; every such name is listed in `shadowed_imports`, so a network client VENDORED into the tree root appears there rather than disappearing. Declared dependencies (pyproject.toml, requirement files, setup.cfg, setup.py, Pipfile, conda environment files, package.json) that name a known network package are reported as `declared-network-dependency`: evidence the tree depends on that package, not a claim that a call site reaches the network. An argument is resolved when the source spells it out or binds it once to a literal; anything built at run time (f-strings, concatenation, lists assembled in code) is not, except a file path whose UNC root is written in the file. The subject digest folds CRLF line endings to LF in text files, and file order is by path bytes, so the same tree gives the same report on every operating system and wherever it sits on disk. This report is DETECTION-grade evidence and does not support an unqualified claim of absence.
 
 ## Findings
 
 | File | Line | Kind | Detail |
 |---|---|---|---|
 | `collector.py` | 2 | network-import | import urllib.request |
-| `pyproject.toml` | 10 | declared-network-dependency | declared dependency 'stripe' names a known network package — not a call site; the tree depends on it |
+| `collector.py` | 10 | network-target | Request\(...\) builds a request for a URL literal; nothing is sent at this line |
+| `pyproject.toml` | 10 | declared-network-dependency | declared dependency 'stripe' names a known network package - not a call site; the tree depends on it |
 
-*ENTROVOUCH — Covenant-attested. For the People.*
+*ENTROVOUCH. For the People.*
