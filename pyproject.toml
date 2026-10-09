@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "entrovouch"
-version = "1.1.0"                 # keep in step with entrovouch/_version.py
+version = "1.1.1"                 # keep in step with entrovouch/_version.py
 description = "No-egress and cryptographic-inventory auditors that sign their own findings."
 readme = "README.md"
 requires-python = ">=3.11"        # tomllib: pyproject.toml must read the same on every supported version

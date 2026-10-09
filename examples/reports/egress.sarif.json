@@ -6,7 +6,7 @@
       "tool": {
         "driver": {
           "name": "ENTROVOUCH no-egress auditor",
-          "version": "1.1.0",
+          "version": "1.1.1",
           "informationUri": "https://github.com/EntroLabs/EntroVouch",
           "rules": [
             {
@@ -153,7 +153,7 @@
         "filesScanned": 7,
         "scopeStatement": "Static analysis of Python (including notebooks, .pth files and shebang scripts), JavaScript, TypeScript, markup, stylesheets, shell, PowerShell and batch scripts, Dockerfiles, Makefiles, pipeline definitions and dependency manifests. It reports network-capable imports, calls that connect or listen, process spawns that reach a network binary, shell strings, dynamic code loading, native calls, external references, network commands in scripts, and declared network dependencies and remote sources. It does NOT prove zero egress: this is a Turing-complete language and the analysis underapproximates. Detection is BLOCKLIST-BASED, so it is complete only against names it knows: a renamed, vendored or dynamically-constructed module or argv entry is invisible. Measured against network libraries chosen without reference to the list, recall is 0%, so a PLAIN, unobfuscated `import X` of a library this tool does not name produces no finding, exactly like an obfuscated one. Check FORBIDDEN_IMPORT_MODULES against your own dependencies before reading anything into a CLEAN verdict. Every third-party module the Python in the tree imports that is on none of this tool's lists is named in `unlisted_imports` (for JavaScript and TypeScript packages, `unlisted_js_imports`): the verdict covers the names the tool knows, and that field lists the ones it does not. Files that fail to parse are reported as `unparseable-source` and were NOT analysed. Directories skipped by name, files of types this tool has no reader for (configuration data, other languages, lockfiles) and symbolic links are listed under `not_scanned` and counted in `files_not_read`; a tree in which nothing was read is NOT-ANALYSED rather than CLEAN. An import is NOT counted as a network import when the tree itself supplies a top-level module of that name, because that module shadows any installed package; every such name is listed in `shadowed_imports`, so a network client VENDORED into the tree root appears there rather than disappearing. Declared dependencies (pyproject.toml, requirement files, setup.cfg, setup.py, Pipfile, conda environment files, package.json) that name a known network package are reported as `declared-network-dependency`: evidence the tree depends on that package, not a claim that a call site reaches the network. An argument is resolved when the source spells it out or binds it once to a literal; anything built at run time (f-strings, concatenation, lists assembled in code) is not, except a file path whose UNC root is written in the file. The subject digest folds CRLF line endings to LF in text files, and file order is by path bytes, so the same tree gives the same report on every operating system and wherever it sits on disk. This report is DETECTION-grade evidence and does not support an unqualified claim of absence.",
         "subjectDigest": "a19a74eacd9be59d4545aec928772b5e6a745c65f029969df244700c84fdc269",
-        "findingsDigest": "a91fca2e94d1dadb6b9378bcfda1d7798576c50c0eba6ce57f9e9bcb93f45097"
+        "findingsDigest": "57a8ec283551cc9d45d8281cc738ca65d0558625f0a9d87c119145337dc3cd62"
       }
     }
   ]

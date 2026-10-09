@@ -2,7 +2,6 @@
 Each test asserts both halves: the false thing is gone, the true neighbour stays."""
 from __future__ import annotations
 
-import ast
 import json
 import struct
 import subprocess
@@ -114,15 +113,9 @@ def test_key_provenance_survives_deeply_nested_generated_code(tmp_path):
     src = "x = " + "+".join(['"a"'] * 3000) + "\nSIGNING_KEY = 'q8vK2mN4pR7sT1w9'\n"
     _write(tmp_path, "g.py", src)
     rep = _kp(tmp_path)                                    # never a crash
-    try:
-        ast.parse(src)
-        parses = True
-    except RecursionError:
-        parses = False                                     # this interpreter cannot parse it either (3.11 on Windows)
-    if parses:
-        assert [f["line"] for f in rep.findings] == [2] and rep.verdict == "REVIEW"
-    else:
-        assert [f["file"] for f in rep.files_not_parsed] == ["g.py"] and rep.verdict == "REVIEW"
+    # 3,000 levels is over the one depth limit every Python version applies here (_parse.MAX_EXPRESSION_DEPTH), so the
+    # file is listed as not parsed on every version and every stack, never read on one machine and refused on another
+    assert [f["file"] for f in rep.files_not_parsed] == ["g.py"] and rep.verdict == "REVIEW"
 
 
 def test_the_common_ways_a_secret_is_bound_are_read(tmp_path):

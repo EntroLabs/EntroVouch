@@ -3,13 +3,13 @@
   "specVersion": "1.6",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-09T02:03:36.527557+00:00",
+    "timestamp": "2026-10-09T21:24:51.097870+00:00",
     "tools": {
       "components": [
         {
           "type": "application",
           "name": "ENTROVOUCH CBOM generator",
-          "version": "1.1.0"
+          "version": "1.1.1"
         }
       ]
     },
@@ -33,7 +33,7 @@
       },
       {
         "name": "entrovouch:findingsDigest",
-        "value": "fc18a936a7e3cea925a95002c114de271f033274437fe419a9be2d5cfc058f49"
+        "value": "d5c39569f213db66be65ff743cfaa0bde9fa6e5258735ec1cb9ea6eb0c28d240"
       },
       {
         "name": "entrovouch:subjectDigest",

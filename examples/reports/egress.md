@@ -1,16 +1,16 @@
 # ENTROVOUCH No-Egress Audit: FINDINGS
 
 - **Target:** `entrovouch/examples/sample_service`
-- **Scanned:** 2026-10-09T02:03:35.903032+00:00
+- **Scanned:** 2026-10-09T21:24:50.685280+00:00
 - **Files scanned:** 7 (1 more were not read: skipped directories, types this tool has no reader for, and links, listed below)
 - **Resolved locally, NOT counted as network imports:** `motor`: this tree supplies a top-level module of each name, which shadows any installed package. Check these if the tree vendors dependencies.
 - **Imported, and not known to this tool (2):** `cryptography`, `jwt`. These third-party modules are on none of this tool's lists, so it says nothing about what they do. Check them against what you know they are.
 - **Files of types this tool does not read:** 1 (`.md` (1))
 - **Parsed with:** Python 3.14
 - **Findings:** 3
-- **Findings digest (reproduces):** `a91fca2e94d1dadb6b9378bcfda1d7798576c50c0eba6ce57f9e9bcb93f45097`
+- **Findings digest (reproduces):** `57a8ec283551cc9d45d8281cc738ca65d0558625f0a9d87c119145337dc3cd62`
 - **Subject digest (binds the files this audit read):** `a19a74eacd9be59d4545aec928772b5e6a745c65f029969df244700c84fdc269`
-- **Content hash (this issuance only, does NOT reproduce):** `338401a09da7a692ba59b482428db0bf…`
+- **Content hash (this issuance only, does NOT reproduce):** `5a80e417e0930a42cc4049909053369a…`
 - **Signature:** UNSIGNED - content hash only, origin NOT attested
 
 > ⚠️ **This report is NOT attested.** The content hash proves the body matches its own digest; it proves nothing about who produced it, because anyone can recompute it. Do not rely on this document as evidence of source.

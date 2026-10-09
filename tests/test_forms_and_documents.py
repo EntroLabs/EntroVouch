@@ -55,6 +55,24 @@ def test_the_same_folder_typed_in_another_case_gives_one_report(tmp_path):
     assert a.verdict == "CLEAN" and "requests" in a.shadowed_imports
 
 
+def test_the_stored_name_comes_from_the_folder_listing_not_from_resolve(tmp_path):
+    """macOS's `resolve` keeps the case that was typed, so the stored name is read from the parent's listing. Called on
+    the typed path here, unresolved, so the listing does the work on every system that ignores case."""
+    from entrovouch.no_egress_auditor import _stored_name
+    (tmp_path / "requests").mkdir()
+    typed = tmp_path / "REQUESTS"
+    if not typed.exists():
+        pytest.skip("this file system tells case apart")
+    assert _stored_name(typed) == "requests"
+    assert _stored_name(tmp_path / "requests") == "requests"
+
+
+def test_a_name_that_is_not_there_is_kept_as_typed(tmp_path):
+    from entrovouch.no_egress_auditor import _stored_name
+    (tmp_path / "requests").mkdir()
+    assert _stored_name(tmp_path / "other") == "other"
+
+
 # ---------------------------------------------------------------- cbom: only its own bytes are its own source
 CRYPTO = 'import jwt\nALG = "TripleDES"\njwt.encode({}, "k", algorithm="RS256")\n'
 

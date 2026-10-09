@@ -1,6 +1,6 @@
 # ENTROVOUCH
 
-Audit what a codebase does, and sign the result.
+Audit a codebase's network access, cryptography, keys and dependencies, and sign the result.
 
 Four tools in pure Python, with no dependencies. None of them opens a network connection.
 
@@ -36,11 +36,11 @@ The label names what was audited and is covered by the digest: pass ours to repr
 The tools need Python 3.11 or later and nothing else. The test suite needs `pytest`:
 
 ```bash
-python -m pytest -q      # 3186 tests, pytest only, exit 0
+python -m pytest -q      # 3203 tests, pytest only, exit 0
 ```
 
 Some tests skip where the machine lacks something (`jsonschema`, or the right to create symbolic links on Windows).
-27 more need the optional extras: run `pip install -e .[test]`, then re-run for **3213**. A test asserts both counts.
+27 more need the optional extras: run `pip install -e .[test]`, then re-run for 3230. A test asserts both counts.
 
 The shipped package, `entrovouch/`, audits `CLEAN`. The demo tree, the test programs and the test workflow produce
 findings on purpose, and `cbom` and `key_provenance` report the package's own search strings. The auditor has no
@@ -67,9 +67,9 @@ takes `--label`.
   configuration files, notebooks and archives. Its verdict is always `REVIEW`: whether a key in the tree is a defect
   depends on who receives the artifact.
 - `sbom` writes a CycloneDX 1.6 inventory of the dependencies the tree declares, top level only and before any build.
-  That is the inventory the EU Cyber Resilience Act
-  ([Regulation (EU) 2024/2847](https://eur-lex.europa.eu/eli/reg/2024/2847/oj), Annex I Part II(1)) asks for from
-  11 December 2027.
+  The EU Cyber Resilience Act
+  ([Regulation (EU) 2024/2847](https://eur-lex.europa.eu/eli/reg/2024/2847/oj), Annex I Part II(1)) asks for at least
+  the top-level dependencies from 11 December 2027.
 
 What each tool reads and reports: [docs/TOOLS.md](docs/TOOLS.md). How `no_egress_auditor` reads each kind of file,
 and what it lists as not read: [docs/WHAT_IS_READ.md](docs/WHAT_IS_READ.md).
@@ -168,9 +168,9 @@ either way is counted both ways. The figures are for this release, on sets no ch
 The first figure counts either-way findings as right; the figure in brackets counts them as wrong. `sbom` reads
 declared dependencies and has no precision figure.
 
-`key_provenance` is the weakest of the four. Its figure rests on 21 findings, so the 95% interval (Wilson) runs from
-65.4% to 95.0%; 16 of the 21 were placeholder values in tests. Its precision varies a lot between trees and is lowest
-on repositories heavy with configuration. Read every finding.
+`key_provenance` is the weakest of the three measured. Its figure rests on 21 findings, so the 95% interval (Wilson)
+runs from 65.4% to 95.0%; 16 of the 21 were placeholder values in tests. Its precision varies a lot between trees and
+is lowest on repositories heavy with configuration. Read every finding.
 
 Known false findings in this release: `key_provenance` reports a constant whose value names the setting it stands
 for (`CONF_CLIENT_SECRET = "client_secret"`) or a dictionary key (`NESTED_DOC_KEY = "_childDocuments_"`). The
@@ -178,8 +178,9 @@ either-way findings of the other tools are listed per set in the corpus.
 
 Expect new false findings on code these tools have not seen, more of them from `key_provenance`. One or two
 repositories make most of the findings in most sets. The findings were read by AI models under the maintainers'
-direction, the `key_provenance` set twice and independently; no person has re-read a set. Many true findings sit in
-tests, examples and docs (192 of the 885), accurate and often not what a buyer is asking about.
+direction, the `key_provenance` set twice and independently; no person has re-read a set. Of the 885
+`no_egress_auditor` findings, 188 are in folders named `test`, `tests`, `example`, `examples`, `doc` or `docs`. They
+are accurate and often not what a buyer is asking about.
 
 ### How often does it miss?
 
@@ -210,8 +211,8 @@ correct. The full rules are in [docs/SIGNING.md](docs/SIGNING.md).
 eb309717634b3a9bd952aac903538bd9b3350d1b006f5176d1c87763ba87a96b
 ```
 
-Paying customers pin the copy in their engagement letter; this one is a convenience copy that anyone who can alter
-the repository can alter. The example reports are unsigned on purpose.
+A customer's engagement letter carries the root to pin. This copy is a convenience, and anyone who can alter the
+repository can alter it. The example reports are unsigned on purpose.
 
 ```python
 from entrovouch.no_egress_auditor import verify_report    # cbom.verify_cbom, sbom.verify_sbom for those
@@ -225,9 +226,8 @@ evidence of origin.
 ## Independently issued audits
 
 The tools, the module lists and the signing capability on this page are free, complete and identical for everyone.
-What cannot be self-served is independence: an audit you run on your own code is not an audit anyone else can rely
-on. Independent third-party issuance, classification of findings and scheduled re-issuance:
-[entroverse.com](https://entroverse.com).
+Independence cannot be self-served: nobody else can rely on an audit you ran on your own code. Third-party
+issuance, classification of findings and scheduled re-issuance: [entroverse.com](https://entroverse.com).
 
 ## License
 

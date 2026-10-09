@@ -16,10 +16,10 @@ Then compare **one value** per report:
 
 | Report | Value to compare | Expected |
 |---|---|---|
-| `reports/egress.json` | `findings_digest` | `a91fca2e94d1dadb6b9378bcfda1d7798576c50c0eba6ce57f9e9bcb93f45097` |
+| `reports/egress.json` | `findings_digest` | `57a8ec283551cc9d45d8281cc738ca65d0558625f0a9d87c119145337dc3cd62` |
 | `reports/egress.json` | `subject_digest` | `a19a74eacd9be59d4545aec928772b5e6a745c65f029969df244700c84fdc269` |
-| `reports/cbom.json` | `findings_digest` | `fc18a936a7e3cea925a95002c114de271f033274437fe419a9be2d5cfc058f49` |
-| `reports/sbom.json` | `findings_digest` | `e7601acdd796babf61abc6466501465bdd6bd6f67fc24c0030b872cbd81dfd90` |
+| `reports/cbom.json` | `findings_digest` | `d5c39569f213db66be65ff743cfaa0bde9fa6e5258735ec1cb9ea6eb0c28d240` |
+| `reports/sbom.json` | `findings_digest` | `eba24423f97e712ce825afc682a023c89308d14fbc1850120ab32cd8af307cc4` |
 
 ```bash
 python -c "import json;print(json.load(open('examples/reports/egress.json'))['findings_digest'])"

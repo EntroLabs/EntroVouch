@@ -1,6 +1,6 @@
 {
   "tool": "ENTROVOUCH key-provenance detector",
-  "tool_version": "1.1.0",
+  "tool_version": "1.1.1",
   "target": "entrovouch/examples/sample_service",
   "files_scanned": 8,
   "findings": [
@@ -29,6 +29,6 @@
     "symbolic_links": 0
   },
   "verdict": "REVIEW",
-  "content_hash": "44ac5ffdb00a043f4dba8e6efe14b01fa186a169481242cfdcdcc9badf581b82",
+  "content_hash": "d537cea9720883c154b3fd592f9fff3ac16c5c6c16a52c873dcc16862f18b874",
   "scope_statement": "Detects key material that originates in the source tree rather than in secret storage: string/bytes literals (directly or through a hex, base64 or repeat transform) bound to key-shaped names (plainly, with a type annotation, as a dataclass field default, as an attribute or configuration entry such as app.config['SECRET_KEY'], in a tuple of names, with :=, or with setattr) or to default arguments of functions and lambdas (a name bound by a for loop is not read), literal keys handed to MAC, KDF, cipher, token and JWT constructors or passed as a key-shaped keyword argument or dictionary value, a literal default for an environment variable with a key-shaped name or a literal it is set to, string literals with the published shape of a provider credential, MAC/KDF keys derived by hashing a literal, a module-level constant or a function parameter (a key hashed from an argument is exactly as secret as the least secret value any call site passes, which source cannot show), private-key files, PEM private-key armour holding a key body in any text file in the tree, this package's own signing-key files, and secrets assigned in .env and configuration files (JSON read as JSON). Static and name-based, so it is neither complete nor authoritative: a key read from a file outside the tree, an environment variable or a KMS is invisible to it (correctly), a secret assigned to an unconventionally-named variable is missed, and a password written inside a connection URL is not detected. Every finding is REVIEW, never a verdict: whether publicly-derivable key material is a defect depends on who receives the artifact, which is not knowable from source. NOTHING-FOUND means nothing came to this tool's attention in the files it read, and what it did not read (skipped directories, files over 16 MiB, what compressed archives hold, symbolic links) is listed in not_scanned; a Python file that would not parse is listed in files_not_parsed and makes the verdict REVIEW; NOT-ANALYSED means no file was read, or only archives this tool could not open."
 }

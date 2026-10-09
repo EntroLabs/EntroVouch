@@ -9,4 +9,4 @@ a new file type read, a new finding kind, a changed detail string. Two reports
 that carry the same version must come from the same detection rules.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"

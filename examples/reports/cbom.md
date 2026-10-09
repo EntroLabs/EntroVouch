@@ -1,13 +1,13 @@
 # ENTROVOUCH Cryptographic Bill of Materials: ❌ BROKEN-CRYPTO
 
 - **Target:** `entrovouch/examples/sample_service`
-- **Scanned:** 2026-10-09T02:03:36.527557+00:00  ·  **Files:** 6
+- **Scanned:** 2026-10-09T21:24:51.097870+00:00  ·  **Files:** 6
 - **Components:** 13  ·  **By PQ status:** BROKEN 2, GROVER-REDUCED 2, REVIEW 2, SAFE 5, VULNERABLE 1, WEAK-RNG 1
 - **Signature:** UNSIGNED - content hash only, origin NOT attested: this CBOM does NOT attest its own origin
-- **Findings digest (reproduces):** `fc18a936a7e3cea925a95002c114de271f033274437fe419a9be2d5cfc058f49`
+- **Findings digest (reproduces):** `d5c39569f213db66be65ff743cfaa0bde9fa6e5258735ec1cb9ea6eb0c28d240`
 - **Subject digest (binds the files this inventory read):** `d70b977bb036581a8e263ed910c249054206cf3fb0248ac3a6b5c0ce069234db`
 - **Not Python, not read:** 2 file(s)
-- **Content hash (this issuance only, does NOT reproduce):** `5f7b96dd80befa3e6b60843968eda8ac…`
+- **Content hash (this issuance only, does NOT reproduce):** `3122a6a2bdfcbf302615c76eedf0208e…`
 
 > **Scope:** Static analysis of Python source names the cryptographic primitives a codebase REFERENCES; it cannot prove a referenced primitive is reached at runtime, cannot always infer a dynamically-computed key SIZE, cannot see crypto behind obfuscation, and reads no language but Python. It is an inventory of the primitives this tool knows plus a post-quantum status, NOT a proof of cryptographic soundness. NOTHING-VULNERABLE-FOUND means nothing vulnerable came to this tool's attention in the files it read; REVIEW-NEEDED means nothing was classified vulnerable or broken and at least one component (a library whose algorithm is chosen at the call, a mode, a switch) needs a person to classify it, or a Python file would not parse and is listed in files_not_parsed; NOT-ANALYSED means no file was read.
 

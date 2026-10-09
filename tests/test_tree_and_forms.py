@@ -110,9 +110,9 @@ PORTABLE_TREE = {
     "notes.rst": "not read\n",
 }
 PORTABLE_DIGESTS = {
-    "egress": "0d6840fea06183fea47ea841090ffd6f4629a5f3ffa38e655a62164d9770d012",
-    "cbom": "4e4ef17ca94e0a907e8d489737b27b21103809b019257da9f8c0212a3d03b9f6",
-    "sbom": "be6c4bd5690e593f1473469a7d4eaf9396bd989b6ea7dc315be793c054fc2997",
+    "egress": "d1936b6f2970f6daa70118c5a22f770899d484e02d597878d08a034a6b0860e9",
+    "cbom": "f3efde98a3302c64502dda5834bb737298b62fe39deaca261ea05fec21e4a22a",
+    "sbom": "c9c9aa240d70c2756c2d3362561927ea88f026922a88352a5cf8c78a25cce47d",
 }
 
 

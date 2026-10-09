@@ -51,6 +51,7 @@ from .signer import (ALGORITHM, UNSIGNED, MerkleSigner, SignerError,
                      verify_signature)
 from .manifests import SETUP_PY_UNPARSEABLE, SKIP_DIRS, collect_manifests, is_manifest_path, is_skipped_dir, tree_files
 from . import _reads
+from ._parse import load_json, parse_python
 
 # ---------------------------------------------------------------------------
 # Policy: the names this tool knows. Detection is list-based, and the list is
@@ -655,13 +656,9 @@ DSN_SINK_NAMES = {"create_engine", "create_async_engine", "connect", "MongoClien
                   "KafkaProducer", "KafkaConsumer", "Client", "AsyncClient", "Engine"}
 
 
-def _parse_quietly(src: str, filename: str = "<unknown>") -> ast.AST:
-    """`ast.parse` with the audited file's own compile-time warnings set aside. An invalid escape in
-    someone else's string (`"\\d"`) is their warning, not this tool's output; and under `-W error` it
-    would turn a file that parses into one reported as unparseable."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        return ast.parse(src, filename=filename)
+# One parse for every tool: the audited file's warnings set aside, and one depth limit on every Python version
+# and every stack (see _parse.py).
+_parse_quietly = parse_python
 
 
 # Distributions whose name is not the module they install (`pip install grpcio` gives `import grpc`)
@@ -2772,7 +2769,11 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
     # inside that function only: `_local_names[id(call)]` holds the names the calls enclosing scopes bind
     _local_names: dict[int, frozenset] = {}
 
-    def _scope_walk(parent, inherited):
+    # Iterative, never recursive: a tree as deep as the parser accepts (60,000 attributes in a chain, where the stack
+    # is large) must not overflow a walk over it.
+    work: list[tuple[ast.AST, frozenset]] = [(tree, frozenset())]
+    while work:
+        parent, inherited = work.pop()
         for child in ast.iter_child_nodes(parent):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
                 a = child.args
@@ -2786,15 +2787,13 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
                     if isinstance(cur, ast.Name) and isinstance(cur.ctx, ast.Store):
                         names.add(cur.id)
                     stack.extend(ast.iter_child_nodes(cur))
-                _scope_walk(child, frozenset(names))
+                work.append((child, frozenset(names)))
             else:
                 if isinstance(child, ast.Call):
                     _local_names[id(child)] = inherited
                 if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store) and not inherited:
                     rebound.add(child.id)             # a module-level or class-level variable: the whole file
-                _scope_walk(child, inherited)
-
-    _scope_walk(tree, frozenset())
+                work.append((child, inherited))
     # names the file also binds another way: a parameter, a `for`, `with`, `except` or comprehension target, an
     # unpacked assignment. Such a name is not bound once: the value it holds where it is used is not the literal.
     direct = {id(t) for n in ast.walk(tree) if isinstance(n, ast.Assign) for t in n.targets} | {
@@ -7585,7 +7584,7 @@ def _check_script_lines(path: Path, rel: str, text: str | None = None) -> list[F
         if exec_form:
             # `RUN ["python", "-c", "import socket"]`: the exec form hands its array to the program as argv
             try:
-                argv = json.loads(exec_form.group(1))
+                argv = load_json(exec_form.group(1))
             except (ValueError, RecursionError):
                 argv = None
             if isinstance(argv, list) and all(isinstance(a, str) for a in argv) and len(argv) > 2 \
@@ -8094,7 +8093,7 @@ def python_units(path: Path) -> list[tuple[str, int | None]] | None:
         return [("\n".join(ln if re.match(r"import[ \t]", ln) else "" for ln in lines) + "\n", None)]
     if suffix in NOTEBOOK_EXTS:
         try:
-            data = json.loads(_reads.read_text(path))
+            data = load_json(_reads.read_text(path))
         except RecursionError:
             raise ValueError("a notebook nested too deeply to read") from None
         cells = notebook_code_cells(data)
@@ -8124,7 +8123,7 @@ def _check_notebook(path: Path, rel: str, local_modules: frozenset[str] = frozen
     `%prun` lines run their text as Python and are checked as Python. Line numbers are cell numbers, counted from 1
     over all cells."""
     try:
-        data = json.loads(_reads.read_text(path))
+        data = load_json(_reads.read_text(path))
         cells = notebook_code_cells(data)
     except (ValueError, AttributeError, RecursionError):
         data, cells = None, None
@@ -8762,6 +8761,35 @@ _TREE_TAG = bytes([1])
 _UNREAD_DIGEST = "00" * 32
 
 
+def _stored_name(resolved: Path) -> str:
+    """The final component of a resolved path as its folder lists it.
+
+    Windows' `resolve` returns the stored case; macOS's, and Linux's on a case-folding folder, return the case that was
+    typed. Reading the parent's listing gives the stored name on all three: the entry that is spelled exactly so, or
+    else the one entry that matches ignoring case and Unicode form and is the same file.
+    """
+    name = resolved.name
+    parent = resolved.parent
+    if not name or parent == resolved:
+        return name
+    try:
+        entries = os.listdir(parent)
+    except OSError:
+        return name
+    if name in entries:
+        return name
+    want = unicodedata.normalize("NFC", name).casefold()
+    same = [e for e in entries if unicodedata.normalize("NFC", e).casefold() == want and _same_file(parent / e, resolved)]
+    return same[0] if len(same) == 1 else name
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
 def _subject_name(target: Path) -> str:
     """The final path component, resolving relative forms to a real name.
 
@@ -8772,7 +8800,7 @@ def _subject_name(target: Path) -> str:
     """
     target = Path(target)   # callers pass str or Path; a redundant guard at a boundary is cheap
     try:
-        on_disk = target.resolve().name
+        on_disk = _stored_name(target.resolve())
     except OSError:
         on_disk = ""
     name = target.name
@@ -8996,7 +9024,7 @@ def _reject_constant(name):
 def strict_json_loads(text: str):
     """`json.loads` that refuses a key given twice in one object (one parser reads the first value, another the
     last, so one file would say two things) and NaN or Infinity (not JSON)."""
-    return json.loads(text, object_pairs_hook=_reject_duplicates, parse_constant=_reject_constant,
+    return load_json(text, object_pairs_hook=_reject_duplicates, parse_constant=_reject_constant,
                       parse_float=_finite_float)
 
 

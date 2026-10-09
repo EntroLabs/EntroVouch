@@ -66,11 +66,11 @@ not fully read.
 
 ## `sbom`
 
-`sbom` emits CycloneDX 1.6 from the dependencies the tree declares, before any build and at the top level only. That
-is the inventory [Regulation (EU) 2024/2847](https://eur-lex.europa.eu/eli/reg/2024/2847/oj) (the Cyber Resilience
-Act), Annex I Part II(1), asks for: a software bill of materials in a commonly used machine-readable format covering
-at least the top-level dependencies. The obligation applies from 11 December 2027. Incident reporting under the same
-Act is outside this command.
+`sbom` emits CycloneDX 1.6 from the dependencies the tree declares, before any build and at the top level only.
+[Regulation (EU) 2024/2847](https://eur-lex.europa.eu/eli/reg/2024/2847/oj) (the Cyber Resilience Act), Annex I
+Part II(1), asks for a software bill of materials in a commonly used machine-readable format covering at least the
+top-level dependencies, from 11 December 2027. This one covers that scope, read from the declarations rather than
+from a build. Incident reporting under the same Act is outside this command.
 
 It does not hash a built artifact, does not walk transitive dependencies, and does not claim conformance to the CISA
 2026 minimum elements. The document labels those gaps `unknown`.
@@ -81,3 +81,7 @@ fields.
 
 Every command lists a file it could not open (permissions, a lock held by another program) and never reports a clean
 result over it. The auditor reports such a file as `unparseable-source`, and the subject digest records it as unread.
+
+Every command applies one nesting limit on every Python version and machine. Python whose expressions nest deeper
+than 1,000 levels, and JSON nested deeper than 900, is not read and is reported the same way as a file that will not
+parse. The reasons are in [WHAT_IS_READ.md](WHAT_IS_READ.md).

@@ -1,8 +1,8 @@
 {
   "tool": "ENTROVOUCH CBOM generator",
-  "tool_version": "1.1.0",
+  "tool_version": "1.1.1",
   "target": "entrovouch/examples/sample_service",
-  "scanned_at_utc": "2026-10-09T02:03:36.527557+00:00",
+  "scanned_at_utc": "2026-10-09T21:24:51.097870+00:00",
   "files_scanned": 6,
   "verdict": "BROKEN-CRYPTO",
   "summary": {
@@ -136,8 +136,8 @@
   ],
   "subject_digest": "d70b977bb036581a8e263ed910c249054206cf3fb0248ac3a6b5c0ce069234db",
   "tree_listing_digest": "18a2b08bf9bfcf85fb734aadb033121ef2bc061a10839dae1f8bd126cbba4b04",
-  "findings_digest": "fc18a936a7e3cea925a95002c114de271f033274437fe419a9be2d5cfc058f49",
-  "content_hash": "5f7b96dd80befa3e6b60843968eda8acdf9cec101671608683137c2933464784",
+  "findings_digest": "d5c39569f213db66be65ff743cfaa0bde9fa6e5258735ec1cb9ea6eb0c28d240",
+  "content_hash": "3122a6a2bdfcbf302615c76eedf0208e5e6d126f5be65eb09c363c0beecd8dcd",
   "integrity_tag": "",
   "self_scan_suppressed": false,
   "parser_python": "3.14",

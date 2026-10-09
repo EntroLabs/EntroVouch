@@ -60,6 +60,7 @@ from .manifests import tree_files
 from .signer import ALGORITHM, UNSIGNED, MerkleSigner, SignerError
 from ._pem import armour_with_key
 from . import _reads
+from ._parse import parse_python
 
 # ---------------------------------------------------------------------------
 # Classification tables. (primitive, category, quantum-status)
@@ -391,13 +392,9 @@ _QUANTUM_ORDER = {"BROKEN": 0, "VULNERABLE": 1, "WEAK-RNG": 2, "REVIEW": 3,
                   "GROVER-REDUCED": 4, "SAFE": 5}
 
 
-def _parse_quietly(src: str, filename: str = "<unknown>") -> ast.AST:
-    """`ast.parse` with the audited file's own compile-time warnings set aside. An invalid escape in
-    someone else's string (`"\\d"`) is their warning, not this tool's output; and under `-W error` it
-    would turn a file that parses into one reported as unparseable."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        return ast.parse(src, filename=filename)
+# One parse for every tool: the audited file's warnings set aside, and one depth limit on every Python version
+# and every stack (see _parse.py).
+_parse_quietly = parse_python
 
 
 

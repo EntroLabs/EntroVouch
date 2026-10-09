@@ -2,7 +2,7 @@
 
 The repositories the README's precision figures were measured on, each pinned to the commit that was audited. Clone a repository at its commit, run `python -m entrovouch.no_egress_auditor <dir>`, and read every distinct finding against one question: is what the finding says about that line true?
 
-Sets 1 to 3 were measured with version 1.0.0 of this package and earlier. Sets 5 to 37 and 39 were measured with earlier builds of version 1.1.0, and sets 38 and 40 with 1.1.0 as first shipped. Sets 41 to 46 were measured on 2026-10-08 on later builds; each section says which tool was measured on the build that ships. Sets 1 to 4 were re-run on 1.1.0 as shipped: every false and either-way class recorded for them is gone. Set 4 was re-read in full (197 findings, none false); the findings of sets 1 to 3 have not been re-read line by line, so their figures stand as measured.
+Sets 1 to 3 were measured with version 1.0.0 of this package and earlier. Sets 5 to 37 and 39 were measured with earlier builds of version 1.1.0, and sets 38 and 40 with 1.1.0 as first shipped. Sets 41 to 46 were measured on 2026-10-08 on later builds; each section says which tool was measured on the build that ships. Sets 1 to 4 were re-run on 1.1.0 as shipped: every false and either-way class recorded for them is gone. Set 4 was re-read in full (197 findings, none false); the findings of sets 1 to 3 have not been re-read line by line, so their figures stand as measured. The README's figures (sets 42, 43 and 45 for `no_egress_auditor`, 41 to 46 for `cbom`, 50 for `key_provenance`) were re-run on 1.1.1, on the repositories each set lists, and give the same findings.
 
 ## Set 1 (held out at version 1.0.0, 94.1%)
 

@@ -370,3 +370,102 @@ def test_key_material_in_python_source_and_config_files(tmp_path):
     assert got == [("a.py", "derived-from-literal"), ("a.py", "key-file-in-tree"),
                    ("config.yaml", "literal-key"), ("settings.json", "literal-key")]
 
+
+
+# ---------------------------------------------------------------- one depth limit on every Python and every stack
+def _in_thread_with_stack(size, fn):
+    """Run `fn` in a thread with a stack of `size` bytes: Python 3.14 sets its parser's depth limit from the stack it
+    finds, so this reproduces, on any machine, a runner whose stack is larger than this one's."""
+    import threading
+    out = {}
+    old = threading.stack_size()
+    threading.stack_size(size)
+    try:
+        t = threading.Thread(target=lambda: out.setdefault("r", fn()))
+        t.start()
+        t.join()
+    finally:
+        threading.stack_size(old)
+    return out["r"]
+
+
+def _three_reports(tree):
+    r = audit(tree, label="t")
+    c = cbom.build_cbom(tree, label="t")
+    k = key_provenance.scan_key_provenance(tree, label="t")
+    return (r.verdict, sorted((f["file"], f["kind"]) for f in r.findings),
+            c.verdict, sorted(f["file"] for f in c.files_not_parsed),
+            k.verdict, sorted((f["file"], f["kind"]) for f in k.findings), sorted(f["file"] for f in k.files_not_parsed))
+
+
+@pytest.mark.parametrize("depth", [60000, 1010])
+def test_a_file_nested_too_deep_is_unparseable_on_any_stack(tmp_path, depth):
+    _write(tmp_path, "deep.py", "import hashlib\nSECRET_KEY = 'q8vK2mN4pR7sT1w9x'\nx = a" + ".b" * depth + "\n")
+    _write(tmp_path, "real.py", "import requests\n")
+    here = _three_reports(tmp_path)
+    large = _in_thread_with_stack(64 * 1024 * 1024, lambda: _three_reports(tmp_path))
+    assert here == large
+    assert ("deep.py", "unparseable-source") in here[1]
+    assert here[3] == ["deep.py"] and here[6] == ["deep.py"]
+
+
+def test_a_file_just_inside_the_depth_limit_is_read_by_every_tool(tmp_path):
+    _write(tmp_path, "deep.py", "import hashlib\nSECRET_KEY = 'q8vK2mN4pR7sT1w9x'\nx = a" + ".b" * 990 + "\n")
+    rep = _three_reports(tmp_path)
+    assert ("deep.py", "unparseable-source") not in rep[1]
+    assert rep[3] == [] and rep[6] == [] and ("deep.py", "literal-key") in rep[5]
+
+
+@pytest.mark.parametrize("depth", [500, 990, 1010])
+def test_the_report_does_not_depend_on_how_deep_the_caller_is(tmp_path, depth):
+    """Python 3.11's budget for building a syntax tree, and every recursive step, shrink with the caller's own depth.
+    A library user calls these tools from wherever they like, so the same file must give the same reports from 0 and
+    from 300 frames down."""
+    _write(tmp_path, "deep.py", "import requests\nx = requests.get('https://example.com/x')" + ".b" * depth + "\n")
+
+    def down(k):
+        return _three_reports(tmp_path) if k == 0 else down(k - 1)
+
+    assert down(0) == down(300)
+
+
+def test_the_depth_limit_is_below_every_supported_parsers_own():
+    import ast
+    from entrovouch._parse import MAX_EXPRESSION_DEPTH, NestingTooDeep, parse_python
+    assert MAX_EXPRESSION_DEPTH < 2982                     # the 3.11 parser refuses `a.b.b...` 2,983 deep
+    ast.parse("x = a" + ".b" * MAX_EXPRESSION_DEPTH)       # every version parses this much
+    parse_python("x = a" + ".b" * (MAX_EXPRESSION_DEPTH - 1))
+    with pytest.raises(NestingTooDeep):
+        parse_python("x = a" + ".b" * (MAX_EXPRESSION_DEPTH + 1))
+    with pytest.raises(RecursionError):                    # what every caller already treats as a file it could not read
+        parse_python("x = " + "+".join(["1"] * (MAX_EXPRESSION_DEPTH + 2)))
+
+
+@pytest.mark.parametrize("text, depth_ok", [
+    ('{"a": "q\\"[[[", "b": [1]}', True),          # an escaped quote does not end the string, its brackets do not count
+    ('{"a": "\\\\", "b": [[1]]}', True),            # an escaped backslash does end before the closing quote
+    ('{"s": "' + "[" * 2000 + '"}', True),          # brackets inside a string are text
+    ("[" * 900 + "]" * 900, True),
+    ("[" * 901 + "]" * 901, False),
+    ('{"a":' * 901 + "1" + "}" * 901, False),
+])
+def test_json_has_one_nesting_limit_on_every_python(text, depth_ok):
+    import json
+    from entrovouch._parse import MAX_JSON_DEPTH, NestingTooDeep, load_json
+    assert MAX_JSON_DEPTH < 990                        # what the 3.11 parser itself accepts
+    if depth_ok:
+        assert load_json(text) == json.loads(text)
+    else:
+        with pytest.raises(NestingTooDeep):
+            load_json(text)
+
+
+@pytest.mark.parametrize("name, wrap", [
+    ("package.json", lambda deep: '{"name": "x", "dependencies": {"requests": "1.0"}, "x": ' + deep + "}"),
+    ("n.ipynb", lambda deep: '{"cells": [{"cell_type": "code", "source": ["import requests"]}], "x": ' + deep + "}"),
+])
+def test_a_json_file_nested_too_deep_gives_one_report_on_any_stack(tmp_path, name, wrap):
+    _write(tmp_path, name, wrap("[" * 20000 + "]" * 20000))   # refused on a 1 MB 3.14 stack, read on a 64 MB one
+    here = _three_reports(tmp_path)
+    large = _in_thread_with_stack(64 * 1024 * 1024, lambda: _three_reports(tmp_path))
+    assert here == large

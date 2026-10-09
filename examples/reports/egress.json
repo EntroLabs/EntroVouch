@@ -1,8 +1,8 @@
 {
   "tool": "ENTROVOUCH no-egress auditor",
-  "tool_version": "1.1.0",
+  "tool_version": "1.1.1",
   "target": "entrovouch/examples/sample_service",
-  "scanned_at_utc": "2026-10-09T02:03:35.903032+00:00",
+  "scanned_at_utc": "2026-10-09T21:24:50.685280+00:00",
   "files_scanned": 7,
   "files_not_read": 1,
   "verdict": "FINDINGS",
@@ -52,8 +52,8 @@
     "symbolic_links": 0
   },
   "subject_digest": "a19a74eacd9be59d4545aec928772b5e6a745c65f029969df244700c84fdc269",
-  "findings_digest": "a91fca2e94d1dadb6b9378bcfda1d7798576c50c0eba6ce57f9e9bcb93f45097",
-  "content_hash": "338401a09da7a692ba59b482428db0bfe4ea889ff5eb3f120b2312f81cb287c5",
+  "findings_digest": "57a8ec283551cc9d45d8281cc738ca65d0558625f0a9d87c119145337dc3cd62",
+  "content_hash": "5a80e417e0930a42cc4049909053369a7af48d8f8eacd6610f2cf91446144415",
   "integrity_tag": "",
   "signature_algorithm": "UNSIGNED - content hash only, origin NOT attested",
   "signature": null,

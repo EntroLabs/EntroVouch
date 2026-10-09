@@ -23,6 +23,7 @@ import unicodedata
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from . import _reads
+from ._parse import load_json, parse_python
 
 # Directories skipped by name wherever they appear inside the audited tree.
 SKIP_DIRS = {
@@ -60,13 +61,9 @@ _SCRIPT_NET_RE = re.compile(r"(?<![\w.-])(curl|wget|aria2c|nc|ncat|ssh|scp|rsync
 _URL_VALUE_RE = re.compile(r"^(?:[a-z][a-z0-9+.-]*)://", re.IGNORECASE)
 
 
-def _parse_quietly(src: str, filename: str = "<unknown>") -> ast.AST:
-    """`ast.parse` with the audited file's own compile-time warnings set aside. An invalid escape in
-    someone else's string (`"\\d"`) is their warning, not this tool's output; and under `-W error` it
-    would turn a file that parses into one reported as unparseable."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        return ast.parse(src, filename=filename)
+# One parse for every tool: the audited file's warnings set aside, and one depth limit on every Python version
+# and every stack (see _parse.py).
+_parse_quietly = parse_python
 
 
 
@@ -996,7 +993,7 @@ def _node_eval_reaches_network(cmd: str) -> bool:
 def _remotes_from_package_json(text: str, rel: str) -> list[RemoteSource]:
     """Scripts that fetch, and dependencies installed from a URL or a repository."""
     try:
-        data = json.loads(text)
+        data = load_json(text)
     except (json.JSONDecodeError, RecursionError):
         return []
     if not isinstance(data, dict):
@@ -1772,7 +1769,7 @@ def _remotes_from_config(text: str, rel: str, low: str) -> list[RemoteSource]:
 
 def _deps_from_package_json(text: str, rel: str) -> tuple[list[DeclaredDep], list[ManifestError]]:
     try:
-        data = json.loads(text)
+        data = load_json(text)
     except (json.JSONDecodeError, RecursionError):
         return [], [ManifestError(rel, 1, "package.json could not be parsed")]
     if not isinstance(data, dict):

@@ -94,10 +94,10 @@ def test_readme_test_count_is_current():
     nothing. Only the count notices.
     """
     base = re.search(r"#\s*(\d+)\s+tests, pytest only", README)
-    full = re.search(r"re-run for \*\*(\d+)\*\*", README)
+    full = re.search(r"re-run for (\d+)\b", README)
     assert base and full, (
         "README must state BOTH counts: the clean-clone figure as "
-        "'# N tests, pytest only' and the with-extras figure as 're-run for **N**'"
+        "'# N tests, pytest only' and the with-extras figure as 're-run for N'"
     )
     base_n, full_n = int(base.group(1)), int(full.group(1))
     assert full_n > base_n, (
@@ -167,7 +167,7 @@ def test_optional_suites_are_not_silently_empty():
     src_n = sum(_collect_suite(suite) for suite, _ok in OPTIONAL)
 
     base = int(re.search(r"#\s*(\d+)\s+tests, pytest only", README).group(1))
-    full = int(re.search(r"re-run for \*\*(\d+)\*\*", README).group(1))
+    full = int(re.search(r"re-run for (\d+)\b", README).group(1))
     assert full - base == src_n, (
         f"the README's two counts differ by {full - base}, but the optional "
         f"files declare {src_n} tests. One of the three numbers is stale."

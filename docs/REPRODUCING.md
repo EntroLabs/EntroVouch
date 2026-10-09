@@ -28,9 +28,12 @@ so compare digests on the same tree with the same label.
 
 ## One tree, one report
 
-Three things that differ between machines are taken out of the result.
+Five things that differ between machines are taken out of the result.
 
 - **Where the tree sits.** Directories are skipped by their path inside the tree, never by the folders above it.
+- **How the tree's path was typed.** The tree is known by the name its folder is stored under, read from the
+  listing of the folder above it. On a file system that ignores case (Windows, macOS), `REQUESTS` and `requests`
+  reach one folder, and both give the report for the stored name.
 - **File order.** Paths use forward slashes, are normalised to Unicode NFC and are ordered by their UTF-8 bytes, so
   Windows (which sorts without regard to case) and Linux give one order. NFC follows the Unicode version of the Python
   that runs the tool (14.0 on 3.11, 16.0 on 3.14), so a name holding a character that only a newer version composes
@@ -39,6 +42,10 @@ Three things that differ between machines are taken out of the result.
 - **Line endings.** The subject digest folds CRLF to LF in text files, so a checkout that converted line endings
   matches one that did not. A binary file is hashed byte for byte. A file git treats as text by its own test (no NUL
   byte, no lone CR, few control bytes, such as Cython source or a protocol-0 pickle) is folded as text, at any size.
+- **How deep the parser goes.** Python 3.11 to 3.14 accept different nesting depths, and 3.14's depends on the
+  stack it finds. Every tool applies one lower limit (1,000 levels of Python expressions, 900 of JSON), so a file
+  nested past it is reported as not read on every version and machine. Details:
+  [WHAT_IS_READ.md](WHAT_IS_READ.md).
 
 Each file is read as one version for the whole run. If it changes while it is being read, the run stops with exit 2
 rather than report on two versions.
@@ -54,7 +61,8 @@ is only a path (no space, quote or other character a command needs) naming a fil
 A stand-in of any other shape is read, so on Windows it can add a finding but never hide one. The files alone decide
 this; git's index, which the tree's author writes, does not.
 
-The rules are tested on Windows and on Linux (Ubuntu 24.04, ext4), where a test pins the digests of one tree and both
-systems give the same values. The authors have not run macOS; the rules are written so it gives the same bytes, and the
-test workflow runs the suite, including that pinned-digest test, on macOS for every push to `main` and every pull
-request. If a digest ever differs between systems, check the operating system first.
+The rules are tested on Windows and on Linux (Ubuntu 24.04, ext4), including an ext4 folder set to ignore case,
+which keeps a path's typed case as macOS does. A test pins the digests of one tree, and every system gives the same
+values. The authors have not run macOS themselves; the test workflow runs the suite, including that pinned-digest
+test, on macOS for every push to `main` and every pull request. If a digest ever differs between systems, check the
+operating system first.

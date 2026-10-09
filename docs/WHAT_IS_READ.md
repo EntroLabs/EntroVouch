@@ -143,6 +143,13 @@ names the npm package `x`; a `jsr:` package is listed in `unlisted_js_imports`.
   is `unresolved-call`: which program runs is not shown. Any other variable is left as written.
   Configuration data (`.json`, `.yaml`, `.toml`), lockfiles and other languages (Go, Rust,
   Java, PHP, Ruby) are not read: they are counted in `not_scanned`.
+- **One depth limit on every Python version.** A file whose expressions nest deeper than 1,000 levels (a chain such as
+  `a.b.b...` or `1+1+...` that long) is not parsed by any of the tools, on any Python version or machine, and is
+  reported as not parsed. Python 3.11 to 3.13 refuse such a file themselves at about 2,990 levels, fewer on 3.11 when
+  the calling code is already deep; Python 3.14 sets its limit from the stack it finds. Without one lower limit the
+  same file would be read on one machine, or from one caller, and not on another. A JSON file (`package.json`, a
+  notebook) nested deeper than 900 levels is likewise not read, on every version: Python's own JSON reader accepts
+  990 levels on 3.11 and, on 3.14, as many as the stack allows.
 - **Python is read the way Python reads it.** The file's encoding cookie and BOM are
   honoured (so a `# coding:` line cannot hide an import from the auditor that the interpreter
   executes), the extension is matched without regard to case, a file with no extension, `.cgi` or `.fcgi` and a

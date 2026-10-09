@@ -41,6 +41,7 @@ from pathlib import Path
 from ._cli import missing_folder, run, write_text
 from .manifests import tree_files
 from . import _reads
+from ._parse import load_json, parse_python
 from .no_egress_auditor import (
     _DISPLAY_CELL_MAGICS, _PROGRAM_CELL_MAGICS,
     _read_python_source, _subject_name, canonical_body, tree_listing_digest, markdown_cell, markdown_code, python_units,
@@ -370,13 +371,9 @@ _KEYED_THING = re.compile(
 )
 
 
-def _parse_quietly(src: str, filename: str = "<unknown>") -> ast.AST:
-    """`ast.parse` with the audited file's own compile-time warnings set aside. An invalid escape in
-    someone else's string (`"\\d"`) is their warning, not this tool's output; and under `-W error` it
-    would turn a file that parses into one reported as unparseable."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        return ast.parse(src, filename=filename)
+# One parse for every tool: the audited file's warnings set aside, and one depth limit on every Python version
+# and every stack (see _parse.py).
+_parse_quietly = parse_python
 
 
 
@@ -1245,7 +1242,7 @@ def _notebook_text_armour(p: Path, rel: str, every_cell: bool = False) -> list[K
     """Private-key armour a notebook keeps outside its code: printed into a cell's saved output, or written in a
     markdown cell. Reported at the cell's number."""
     try:
-        data = json.loads(_reads.read_text(p))
+        data = load_json(_reads.read_text(p))
     except (OSError, ValueError, RecursionError):
         return []
     if not isinstance(data, dict):
@@ -1458,7 +1455,7 @@ def _scan_key_files(p: Path, rel: str, read: list | None = None, unread: dict | 
             return [f for f in out if not f.detail.startswith("a file named like key material")] + jwk_found
     if suffix in (".json", ".jwk", ".jwks"):
         try:
-            data = json.loads(text)
+            data = load_json(text)
         except (ValueError, RecursionError):
             data = None                 # not JSON, or nested deeper than the parser goes: its text was searched above
         if isinstance(data, dict) and {"seed", "height", "next_index"} <= set(data):
