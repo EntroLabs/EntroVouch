@@ -63,6 +63,8 @@ this; git's index, which the tree's author writes, does not.
 
 The rules are tested on Windows and on Linux (Ubuntu 24.04, ext4), including an ext4 folder set to ignore case,
 which keeps a path's typed case as macOS does. A test pins the digests of one tree, and every system gives the same
-values. The authors have not run macOS themselves; the test workflow runs the suite, including that pinned-digest
-test, on macOS for every push to `main` and every pull request. If a digest ever differs between systems, check the
-operating system first.
+values. The authors have not run macOS on a machine of their own. The test workflow runs the suite, including that
+pinned-digest test, on macOS for every push to `main` and every pull request; for version 1.1.1 it passed on macOS
+with Python 3.11, 3.12, 3.13 and 3.14 in
+[run 37998124472](https://github.com/EntroLabs/EntroVouch/actions/runs/37998124472). If a digest ever differs between
+systems, check the operating system first.
