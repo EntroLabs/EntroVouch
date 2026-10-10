@@ -36,11 +36,11 @@ The label names what was audited and is covered by the digest: pass ours to repr
 The tools need Python 3.11 or later and nothing else. The test suite needs `pytest`:
 
 ```bash
-python -m pytest -q      # 3203 tests, pytest only, exit 0
+python -m pytest -q      # 3207 tests, pytest only, exit 0
 ```
 
-Some tests skip where the machine lacks something (`jsonschema`, or the right to create symbolic links on Windows).
-27 more need the optional extras: run `pip install -e .[test]`, then re-run for 3230. A test asserts both counts.
+Some tests skip where the machine lacks something, such as `jsonschema`. 27 more need the optional extras:
+run `pip install -e .[test]`, then re-run for 3234. A test asserts both counts.
 
 The shipped package, `entrovouch/`, audits `CLEAN`. The demo tree, the test programs and the test workflow produce
 findings on purpose, and `cbom` and `key_provenance` report the package's own search strings. The auditor has no
@@ -117,8 +117,6 @@ findings digest: re-run it and read the findings. Details: [docs/REPRODUCING.md]
                   or NOTHING WAS SCANNED (`NOT-ANALYSED`): never a clean result
 ```
 
-Treat 1 and 2 differently in a pipeline: 2 means the scan did not run, or read nothing.
-
 ## What a result means
 
 `no_egress_auditor` underapproximates. A sound analyser overapproximates: it may report egress that cannot happen,
@@ -173,14 +171,13 @@ runs from 65.4% to 95.0%; 16 of the 21 were placeholder values in tests. Its pre
 is lowest on repositories heavy with configuration. Read every finding.
 
 Known false findings in this release: `key_provenance` reports a constant whose value names the setting it stands
-for (`CONF_CLIENT_SECRET = "client_secret"`) or a dictionary key (`NESTED_DOC_KEY = "_childDocuments_"`). The
-either-way findings of the other tools are listed per set in the corpus.
+for (`CONF_CLIENT_SECRET = "client_secret"`) or a dictionary key (`NESTED_DOC_KEY = "_childDocuments_"`).
 
 Expect new false findings on code these tools have not seen, more of them from `key_provenance`. One or two
 repositories make most of the findings in most sets. The findings were read by AI models under the maintainers'
 direction, the `key_provenance` set twice and independently; no person has re-read a set. Of the 885
-`no_egress_auditor` findings, 188 are in folders named `test`, `tests`, `example`, `examples`, `doc` or `docs`. They
-are accurate and often not what a buyer is asking about.
+`no_egress_auditor` findings, 188 are in folders named `test(s)`, `example(s)` or `doc(s)`; they are accurate and
+often not what a buyer is asking about.
 
 ### How often does it miss?
 
@@ -193,8 +190,13 @@ are accurate and often not what a buyer is asking about.
 
 Recall on libraries the list does not name is 0% by construction; `unlisted_imports` names them in every report
 instead. The tier C programs are in `tests/test_detection_scope.py`, which fails if the three misses change, and
-`tests/test_runtime_oracle.py` compares the auditor with a Python audit hook (PEP 578) on 23 programs. We wrote
-both sets of programs, so an adversary who has not seen them may do better than tier C suggests.
+`tests/test_runtime_oracle.py` compares the auditor with a Python audit hook (PEP 578) on 23 programs.
+
+`key_provenance` reported 28 of 40 planted credentials: 28 of 33 in files it reads, none of the 7 in files it does
+not read for literal keys (JavaScript, a Dockerfile, shell, Java, Terraform, archives). `tests/test_key_recall.py`
+names every miss.
+
+We wrote all of these programs and forms, so code written by someone else may do worse.
 
 ## Signing
 
@@ -212,7 +214,8 @@ eb309717634b3a9bd952aac903538bd9b3350d1b006f5176d1c87763ba87a96b
 ```
 
 A customer's engagement letter carries the root to pin. This copy is a convenience, and anyone who can alter the
-repository can alter it. The example reports are unsigned on purpose.
+repository can alter it. One example report is signed with this key:
+`python -m entrovouch.verify examples/signed/egress.json --root <the root above>` prints `ATTESTED`.
 
 ```python
 from entrovouch.no_egress_auditor import verify_report    # cbom.verify_cbom, sbom.verify_sbom for those

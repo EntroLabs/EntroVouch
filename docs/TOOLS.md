@@ -27,8 +27,9 @@ It reads:
   JSON file, wherever the armour starts in the encoded data), on one line, wrapped over lines (a YAML scalar
   continued, strings joined across lines) or encoded twice;
 - notebook cells, output and metadata;
-- zip files (with bytes in front allowed, as in a zipapp), tar, gzip, bzip2, xz and lzma files, recognised by their
-  bytes, and archives inside archives.
+- private-key armour inside zip files (with bytes in front allowed, as in a zipapp), tar, gzip, bzip2, xz and lzma
+  files, recognised by their bytes, and archives inside archives. Inside an archive only armour is searched: a literal
+  key in an archived `.env` or Python file is not read.
 
 Armour with no key under it, such as a placeholder like `<paste your key here>`, is not reported as a key in any file.
 What the tool did not read, or read only in part, is listed.

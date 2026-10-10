@@ -48,6 +48,21 @@ comparison above does not work for it: re-run it and read the findings. Egress, 
 carry `findings_digest`. This is pinned in `tests/test_examples_reproduce.py` so it
 cannot silently become true of another tool without someone noticing.
 
+## One signed report
+
+`signed/egress.json` is the same no-egress audit of `sample_service/`, signed with the
+publisher's key. Check who issued it against the root the [root README](../README.md#the-publishers-public-root)
+publishes:
+
+```bash
+python -m entrovouch.verify examples/signed/egress.json --root eb309717634b3a9bd952aac903538bd9b3350d1b006f5176d1c87763ba87a96b
+```
+
+It prints `ATTESTED`. Without `--root` it prints `UNVERIFIED`, and after any edit to the file, `TAMPERED`. Its
+`findings_digest` is the one in the table above, because it is the same audit. The key is not in this repository,
+so `regenerate.py` does not re-sign it; `tests/test_signed_example.py` fails when the signed copy no longer matches
+the current audit.
+
 Exit codes for the scanners are in the [root README](../README.md#exit-codes).
 `sbom` exits 0 if it ran; whether the BOM lists components is a field, not an
 exit code.
@@ -95,11 +110,12 @@ layer: same tool, a third party on the signature.
 - **Static analysis only.** It audits the source you point it at. It does not
   observe runtime behaviour, and it cannot see egress introduced by a dependency it
   was not pointed at, by dynamic loading, or by a compiled extension.
-- **Detection-grade, not proof.** Detection is blocklist-based, so it is complete
-  only against names it knows. A renamed, vendored or dynamically-constructed module
-  is invisible. The reports say this in their own scope statement rather than
-  leaving you to discover it.
-- **A signature proves origin and integrity, not correctness.** The example reports
-  here are **UNSIGNED** on purpose: signing them would attest who issued them, and
-  the point of this directory is the half that needs no trust at all.
+- **Detection-grade, not proof.** Detection is list-based: a network library that is
+  not on the list produces no finding, and the report names it in `unlisted_imports`
+  instead. What the auditor catches when names are disguised, and what it misses, is
+  measured in the root README's recall table. The reports state their scope in their
+  own body rather than leaving you to discover it.
+- **A signature proves origin and integrity, not correctness.** The reports in
+  `reports/` are **UNSIGNED** on purpose: they are the half that needs no trust at all.
+  One signed copy sits in `signed/`, described below.
 - **`REVIEW` means review.** It is not a pass.
