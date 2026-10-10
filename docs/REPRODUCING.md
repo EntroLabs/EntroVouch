@@ -4,22 +4,24 @@
 
 | Field | Reproduces? | What it answers |
 |---|---|---|
-| `findings_digest` | yes, across runs, processes and machines | *Does this tool, on this tree, still say this?* |
-| `subject_digest` | yes, per tree | *Which tree was audited?* |
-| `content_hash` | no, by design | *Is this the exact artifact I was handed?* |
+| `findings_digest` | yes, across runs, processes and machines (one exception below) | *Does this tool, on this tree, still say this?* |
+| `subject_digest` | yes, per tree and tool (same exception) | *Which tree was audited?* |
+| `content_hash` | no for egress, CBOM and SBOM, by design; yes for `key_provenance` with the same label and tree | *Is this the exact artifact I was handed?* |
 
-All three are printed on the report, each labelled. `content_hash` covers the time the report was issued, so it
-differs on every run. Two reports with the same findings digest and different content hashes are the same result,
-issued twice. `key_provenance` has no findings digest; re-run it and read the findings.
+All three are printed on the report, each labelled. On the egress, CBOM and SBOM reports `content_hash` covers the time
+the report was issued, so it differs on every run. Two reports with the same findings digest and different content hashes are the same result,
+issued twice. `key_provenance` has no findings digest: re-run it and read the findings. Its `content_hash` has no issue time, but
+it matches only when the label, the files read (line endings aside) and the number of files in each
+skipped folder (`.git/`, caches) are the same.
 
-`subject_digest` is an order-independent SHA3-256 over every file the audit read, also carried as the in-toto
+`subject_digest` is an order-independent SHA3-256 over every file the audit read (each tool reads its own files, so the value can differ between tools on one tree), also carried as the in-toto
 `subject`. Files the audit did not read (a skipped directory, a link, a file type it has no reader for) are not
 covered by it.
 
 ## The label
 
-`--label` names the subject inside the signed body, so `findings_digest` covers it. Without that, two different trees
-with the same findings would give the same digest. Pass our label to reproduce our value. Pass your own
+`--label` names the subject inside the signed body, so `findings_digest` covers it. `findings_digest` also covers
+`subject_digest`, so any change to a file the audit read, other than its line endings, changes it. Pass our label to reproduce our value. Pass your own
 (`org/repo@commit`) when you audit your own code, and expect a different digest. If you leave `--label` out, the
 report names the directory (`sample_service`) and gives a valid digest that will not match our table.
 
@@ -28,7 +30,9 @@ so compare digests on the same tree with the same label.
 
 ## One tree, one report
 
-Five things that differ between machines are taken out of the result.
+Five things that differ between machines are taken out of the result. One is not: on Windows, a directory whose
+name ends in a dot or a space is listed with the skipped directories and its files are not read, so the digest,
+and possibly the verdict, differ from Linux and macOS, where it is read. Audit such a tree on Linux or macOS.
 
 - **Where the tree sits.** Directories are skipped by their path inside the tree, never by the folders above it.
 - **How the tree's path was typed.** The tree is known by the name its folder is stored under, read from the
@@ -38,7 +42,7 @@ Five things that differ between machines are taken out of the result.
   Windows (which sorts without regard to case) and Linux give one order. NFC follows the Unicode version of the Python
   that runs the tool (14.0 on 3.11, 16.0 on 3.14), so a name holding a character that only a newer version composes
   can normalise differently between them. On Windows, a file whose name ends in a dot or a space is read by its
-  extended path; a directory with such a name is listed with the skipped directories, its files counted and not read.
+  extended path.
 - **Line endings.** The subject digest folds CRLF to LF in text files, so a checkout that converted line endings
   matches one that did not. A binary file is hashed byte for byte. A file git treats as text by its own test (no NUL
   byte, no lone CR, few control bytes, such as Cython source or a protocol-0 pickle) is folded as text, at any size.
@@ -61,8 +65,8 @@ is only a path (no space, quote or other character a command needs) naming a fil
 A stand-in of any other shape is read, so on Windows it can add a finding but never hide one. The files alone decide
 this; git's index, which the tree's author writes, does not.
 
-The rules are tested on Windows and on Linux (Ubuntu 24.04, ext4), including an ext4 folder set to ignore case,
-which keeps a path's typed case as macOS does. A test pins the digests of one tree, and every system gives the same
+The rules are tested on Windows and on Linux (Ubuntu 24.04, ext4). The suite was also run by hand on an ext4
+folder set to ignore case, which keeps a path's typed case as macOS does; no automated test creates one. A test pins the digests of one tree, and every system gives the same
 values. The authors have not run macOS on a machine of their own. The test workflow runs the suite, including that
 pinned-digest test, on macOS for every push to `main` and every pull request; for version 1.1.1 it passed on macOS
 with Python 3.11, 3.12, 3.13 and 3.14 in

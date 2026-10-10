@@ -27,8 +27,8 @@ with the one you pinned.
 
 The same checks apply to the `key_provenance` report handed to `vex` or `csaf`, and one without a content hash is
 refused. Naming a `key_provenance` report that does not exist, or one made from another tree, is an error: both
-reports must carry the same label and the same `tree_listing_digest`. That digest covers every file the scan reads,
-by name and by content, with line endings folded at any size; what sits in a skipped directory is part of neither
+reports must carry the same label and the same `tree_listing_digest`. That digest covers every regular file found
+outside skipped directories, by name and by content (links are counted, not covered), with line endings folded at any size; what sits in a skipped directory is part of neither
 report and not part of the digest.
 
 - A CBOM that read nothing is refused. One that could not parse a file carries its verdict, and the files it did not
@@ -60,7 +60,7 @@ report of this tool must be that report exactly, intact and with its content has
 that were checked.
 
 `timestamp check` passes when the token is one DER structure holding the report's digest and, with `--nonce`, the
-nonce that `request` printed, after the digest where a timestamp places it. Without `--nonce` it says the nonce was
+nonce that `request` printed, as a DER integer somewhere after the message imprint (the TSTInfo fields are not parsed). Without `--nonce` it says the nonce was
 not checked.
 
 ## SARIF
@@ -70,6 +70,6 @@ in one file are told apart by their order. A notebook result names its cell (`no
 notebook's JSON, and a result about a whole file has no line. SARIF from an audit that read nothing is a run that did
 not succeed.
 
-SARIF, CycloneDX and the SBOM validate against their official schemas, using `jsonschema` in the tests only; the
+SARIF, CycloneDX, the SBOM and CSAF validate against their official schemas, using `jsonschema` in the tests only; the
 tools themselves stay standard library. A schema checks a document's shape, not every claim in it; what each schema
 leaves open is in [CONFORMANCE.md](../CONFORMANCE.md).

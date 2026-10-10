@@ -1,12 +1,16 @@
 # PRECISION CORPUS
 
-The repositories the README's precision figures were measured on, each pinned to the commit that was audited. Clone a repository at its commit, run `python -m entrovouch.no_egress_auditor <dir>`, and read every distinct finding against one question: is what the finding says about that line true?
+The repositories the README's precision figures were measured on, each pinned to the commit that was audited. Clone a repository at its commit, run `python -m entrovouch.no_egress_auditor <dir>`, and read every distinct claim against one question: is what it says about that line true? A claim is a set of findings that say the same thing about the same kind of line; at least one site of each claim was read at its source lines, and its verdict applies to every finding in it.
 
-Sets 1 to 3 were measured with version 1.0.0 of this package and earlier. Sets 5 to 37 and 39 were measured with earlier builds of version 1.1.0, and sets 38 and 40 with 1.1.0 as first shipped. Sets 41 to 46 were measured on 2026-10-08 on later builds; each section says which tool was measured on the build that ships. Sets 1 to 4 were re-run on 1.1.0 as shipped: every false and either-way class recorded for them is gone. Set 4 was re-read in full (197 findings, none false); the findings of sets 1 to 3 have not been re-read line by line, so their figures stand as measured. The README's figures (sets 42, 43 and 45 for `no_egress_auditor`, 41 to 46 for `cbom`, 50 for `key_provenance`) were re-run on 1.1.1, on the repositories each set lists, and give the same findings.
+Sets 1 to 3 were measured with version 1.0.0 of this package and earlier. Sets 5 to 37 and 39 were measured with earlier builds of version 1.1.0, and sets 38 and 40 with 1.1.0 as first shipped. Sets 41 to 46 were measured on 2026-10-08 on later builds; each section says which tool was measured on the build that ships. Sets 1 to 4 were re-run on 1.1.0 as shipped: every false and either-way class recorded for them is gone. Set 4 was re-read in full (197 findings, none false); the findings of sets 1 to 3 have not been re-read line by line, so their figures stand as measured. The README's figures (sets 42, 43 and 45 for `no_egress_auditor`, 41 to 46 for `cbom`, 50 for `key_provenance`) were re-run on 1.1.1, on the repositories each set lists, and give the same findings. Of the 885 `no_egress_auditor` findings in sets 42, 43 and 45, 188 are in a file under a folder named `test`, `tests`, `example`, `examples`, `doc` or `docs` (85 in set 42, 44 in set 43, 59 in set 45).
+
+The findings were read by AI models under the maintainers' direction; no person has re-read a set.
+
+Sourcing rule: the maintainers take in no code of Meta or Chinese origin. When drawing sets 41 to 50 they skipped, before reading it, any repository owned by Meta or by an organisation or person based in China, and any exploitation tool. The skip depends on the owner or on what the repository is for, never on what the tools find. How many drawn repositories were replaced was not recorded for sets 41 to 46; sets 47 to 50 say theirs.
 
 ## Set 1 (held out at version 1.0.0, 94.1%)
 
-Twelve repositories were pinned; the README's set 1 scores ten of them (marshmallow, pyflakes, httpie, websockets, paramiko, itsdangerous, blinker, cachetools, tabulate, wheel).
+Twelve repositories were pinned; set 1's figure scores ten of them (marshmallow, pyflakes, httpie, websockets, paramiko, itsdangerous, blinker, cachetools, tabulate, wheel): 475 findings, 28 false = 94.1%.
 
 | Repository | Commit |
 |---|---|
@@ -25,6 +29,8 @@ Twelve repositories were pinned; the README's set 1 scores ten of them (marshmal
 
 ## Set 2 (held out at version 1.0.0, 95.1%)
 
+877 findings, 43 false, 92 either way = 95.1% (84.6% counting either-way findings as false).
+
 | Repository | Commit |
 |---|---|
 | starlette | `63c5760d8a672cee96e1e523d84bfa1c77d9ee4c` |
@@ -39,6 +45,8 @@ Twelve repositories were pinned; the README's set 1 scores ten of them (marshmal
 | apscheduler | `81e9fdcaac8d6c72f4318cb7ff393c913c7f9440` |
 
 ## Set 3 (held out at version 1.0.0, 95.0%)
+
+560 findings, 28 false, 25 either way = 95.0% (90.5% counting either-way findings as false).
 
 | Repository | Commit |
 |---|---|
@@ -78,9 +86,9 @@ Twelve repositories were pinned; the README's set 1 scores ten of them (marshmal
 | tqdm | `9cf5a12b1f955468a17f0ba3c59092b23e4258ac` |
 | urllib3 | `bcf84e6815f623521e1ffe3e6ab0224d778929c0` |
 
-## Set 41 (all three tools, 2026-10-08; tuning data now)
+## Set 41 (all three tools, 2026-10-08; tuning data for `no_egress_auditor` and `key_provenance`; `cbom` measured on the build that ships, no change was made from it)
 
-Drawn on 2026-10-08 from the public repository search (language Python, 300 to 15,000 KB, pushed in 2026, created before 2022, not archived, not a fork), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; the draw was made with a fixed seed and repositories were skipped, whatever they contained, when their owner is the author of a Meta-originated or a Chinese-origin project or when they are exploitation tools. Cloned shallow, read as text, never run.
+Drawn on 2026-10-08 from the public repository search (language Python, 300 to 15,000 KB, pushed in 2026, created before 2022, not archived, not a fork), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; picked from pages 1 and 2 of the search results by a draw whose seed was not recorded (the repositories and commits are pinned below); repositories were skipped unread under the sourcing rule above, or when they are exploitation tools. Cloned shallow, read as text, never run.
 
 | Repository | Commit |
 |---|---|
@@ -99,9 +107,9 @@ Drawn on 2026-10-08 from the public repository search (language Python, 300 to 1
 `cbom`: 116 components; none false; 4 either way (a scanner's own list of cipher strings to probe with).
 `key_provenance`: 232 findings; 194 false, 17 either way. 179 of the false findings are two classes: a cloud template's `Key` tag (112) and a translation table's labels (67). Both are fixed; the set is tuning data.
 
-## Set 42 (all three tools, 2026-10-08; `no_egress_auditor` and `cbom` measured on the build that ships)
+## Set 42 (all three tools, 2026-10-08; `no_egress_auditor` and `cbom` measured on the build that ships, with no false finding to fix; tuning data for `key_provenance`)
 
-Drawn on 2026-10-08 from the public repository search (language Python, 300 to 15,000 KB, pushed in 2026, created before 2022, not archived, not a fork), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; the draw was made with a fixed seed and repositories were skipped, whatever they contained, when their owner is the author of a Meta-originated or a Chinese-origin project or when they are exploitation tools. Cloned shallow, read as text, never run.
+Drawn on 2026-10-08 from the public repository search (language Python, 300 to 15,000 KB, pushed in 2026, created before 2022, not archived, not a fork), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; picked from page 3 of the search results by a draw whose seed was not recorded (the repositories and commits are pinned below); repositories were skipped unread under the sourcing rule above, or when they are exploitation tools. Cloned shallow, read as text, never run.
 
 | Repository | Commit |
 |---|---|
@@ -120,9 +128,9 @@ Drawn on 2026-10-08 from the public repository search (language Python, 300 to 1
 `cbom`: 23 components; none false.
 `key_provenance`: 15 findings; 12 false (a field named `*_key` holding a plain lowercase word: `provider_key = "mysql"`, `child_list_key = "content"`). Fixed afterwards; the set is tuning data for `key_provenance`.
 
-## Set 43 (all three tools, 2026-10-08; `no_egress_auditor` and `cbom` measured on the build that ships)
+## Set 43 (all three tools, 2026-10-08; `no_egress_auditor` and `cbom` measured on the build that ships, with no false finding to fix; tuning data for `key_provenance`)
 
-Drawn on 2026-10-08 from the public repository search (language Python, 300 to 15,000 KB, pushed in 2026, created before 2022, not archived, not a fork), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; the draw was made with a fixed seed and repositories were skipped, whatever they contained, when their owner is the author of a Meta-originated or a Chinese-origin project or when they are exploitation tools. Cloned shallow, read as text, never run.
+Drawn on 2026-10-08 from the public repository search (language Python, 300 to 15,000 KB, pushed in 2026, created before 2022, not archived, not a fork), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; picked from page 4 of the search results by a draw whose seed was not recorded (the repositories and commits are pinned below); repositories were skipped unread under the sourcing rule above, or when they are exploitation tools. Cloned shallow, read as text, never run.
 
 Nine repositories: a tenth failed to check out on Windows (a file name with a drive letter in it).
 
@@ -138,13 +146,13 @@ Nine repositories: a tenth failed to check out on Windows (a file name with a dr
 | kayak/pypika | `5e800d83a0f0ae14210410c02fd97e51e2e3f1d5` |
 | TylerYep/torchinfo | `f150266dbfe33e2d356b2563c61fd61313bcdcd5` |
 
-`no_egress_auditor`: 254 findings when read, none false, none either way; 244 on the final build (a continued Dockerfile instruction with comment lines in it now reports once, as one without them does; the 10 removed were true findings).
+`no_egress_auditor`: 244 findings on the build that ships, none false, none either way. 254 were read; the 10 the build that ships no longer reports are repeats of one continued Dockerfile instruction with comment lines in it, which now reports once, as one without them does.
 `cbom`: 16 components; none false.
 `key_provenance`: 50 findings; 46 false, 1 either way: a grammar's `"token": "Refreshable"` (40 of them in one repository's test files) and sentinel constants. Fixed afterwards; the set is tuning data for `key_provenance`.
 
 ## Set 44 (all three tools, 2026-10-08; tuning data now for `no_egress_auditor` and `key_provenance`; `cbom` measured on the build that ships)
 
-Drawn on 2026-10-08 from the public repository search (language Python, 300 to 15,000 KB, pushed in 2026, created before 2022, not archived, not a fork), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; the draw was made with a fixed seed and repositories were skipped, whatever they contained, when their owner is the author of a Meta-originated or a Chinese-origin project or when they are exploitation tools. Cloned shallow, read as text, never run.
+Drawn on 2026-10-08 from the public repository search (language Python, 300 to 15,000 KB, pushed in 2026, created before 2022, not archived, not a fork), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; picked from page 5 of the search results by a draw whose seed was not recorded (the repositories and commits are pinned below); repositories were skipped unread under the sourcing rule above, or when they are exploitation tools. Cloned shallow, read as text, never run.
 
 | Repository | Commit |
 |---|---|
@@ -165,7 +173,7 @@ Drawn on 2026-10-08 from the public repository search (language Python, 300 to 1
 
 ## Set 45 (all three tools, 2026-10-08; measured on the build that ships, no change was made from it)
 
-Drawn on 2026-10-08 from the public repository search (language Python, 300 to 12,000 KB, pushed in 2026, created before mid 2022, not archived, not a fork), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; fixed seed; repositories skipped, whatever they contained, when their owner is the author of a Meta-originated or a Chinese-origin project or when they are exploitation tools. Cloned shallow, read as text, never run. One more repository failed to clone.
+Drawn on 2026-10-08 from the public repository search (language Python, 300 to 12,000 KB, pushed in 2026, created before mid 2022, not archived, not a fork), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; picked from page 6 of the search results by a draw whose seed was not recorded (the repositories and commits are pinned below); repositories were skipped unread under the sourcing rule above, or when they are exploitation tools. Cloned shallow, read as text, never run. One more repository failed to clone.
 
 | Repository | Commit |
 |---|---|
@@ -184,9 +192,9 @@ Drawn on 2026-10-08 from the public repository search (language Python, 300 to 1
 `cbom`: 28 components; none false; 3 either way (comparisons with `ssl.CERT_NONE` that check a setting).
 `key_provenance`: 30 findings; 12 false (an API's field names written as constants, 7; a pagination key passed to a call, 3; a variable named `watch_key` holding `shuffleId`, 2), 7 either way (a public key, an empty default, certificates). Not fixed: the set stays held out.
 
-## Set 46 (all three tools, 2026-10-08; measured on the build that ships at the time, tuning data for `key_provenance` and `no_egress_auditor` afterwards)
+## Set 46 (all three tools, 2026-10-08; tuning data for `no_egress_auditor` and `key_provenance`; `cbom` measured on the build that ships, no change was made from it)
 
-Drawn on 2026-10-08 from the public repository search (language Python, 300 to 10,000 KB, pushed in 2026, created before 2023, not archived, not a fork), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; fixed seed; repositories skipped, whatever they contained, when their owner is the author of a Meta-originated or a Chinese-origin project or when they are exploitation tools; one project of Meta-co-originated lineage was cloned and not scanned. Cloned shallow, read as text, never run.
+Drawn on 2026-10-08 from the public repository search (language Python, 300 to 10,000 KB, pushed in 2026, created before 2023, not archived, not a fork), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; picked from page 7 of the search results by a draw whose seed was not recorded (the repositories and commits are pinned below); repositories were skipped unread under the sourcing rule above, or when they are exploitation tools; one project the sourcing rule excludes was cloned and not scanned. Cloned shallow, read as text, never run.
 
 | Repository | Commit |
 |---|---|
@@ -200,13 +208,13 @@ Drawn on 2026-10-08 from the public repository search (language Python, 300 to 1
 | elementary-data/dbt-data-reliability | `837e006fcb371c49d829aec77d5db69e3ce24608` |
 | micheles/decorator | `fb40e8699e8c7eb38d3b2b3e8c03ee1b68b81453` |
 
-`no_egress_auditor`: 402 findings (116 claims); 1 false (a parameter named `exec` called as `exec()`; recorded as 2 when read, the saved rows hold one, at one line), none either way. Fixed afterwards: the call is now reported as unresolved (`method-named-exec`), which is an either-way finding.
+`no_egress_auditor`: 402 findings (116 claims); 1 false (a parameter named `exec` called as `exec()`), none either way. Fixed afterwards: the call is now reported as unresolved (`method-named-exec`), which is an either-way finding.
 `cbom`: 12 components; none false.
 `key_provenance`: 52 findings; 31 false (test fixtures held in strings of several lines 19; a tag, regular expression or column type in a `*_KEY` constant 7; a file path 3; a command substitution 1; a masked token 1), 0 either way. Fixed afterwards.
 
 ## Set 47 (`key_provenance` only, 2026-10-08; measured on an earlier build of 1.1.0; tuning data afterwards for one class)
 
-Drawn on 2026-10-08 from the public repository search (language Python, 250 to 3,500 stars, 300 to 10,000 KB, pushed after 2026-04-01, created before 2023, not archived, not a fork; results page 4), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; seed 20261008; repositories skipped, whatever they contained, when their owner is the author of a Meta-originated or a Chinese-origin project or when they are exploitation tools (one drawn repository, from a Chinese university lab, was set aside unread and replaced by the next in the sample). Cloned shallow, read as text, never run. The auditor and `cbom` were not run on this set.
+Drawn on 2026-10-08 from the public repository search (language Python, 250 to 3,500 stars, 300 to 10,000 KB, pushed after 2026-04-01, created before 2023, not archived, not a fork; results page 4), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; seed 20261008; repositories were skipped unread under the sourcing rule above, or when they are exploitation tools (one drawn repository the sourcing rule excludes was set aside unread and replaced by the next in the sample). Cloned shallow, read as text, never run. The auditor and `cbom` were not run on this set.
 
 | Repository | Commit |
 |---|---|
@@ -223,11 +231,11 @@ Drawn on 2026-10-08 from the public repository search (language Python, 250 to 3
 | google/vizier | `4e3f61efa5cf43ea23e36ed2d94d97381c0ba090` |
 | google/learned_optimization | `64f83138777cb923e4a83f6cf485b075037bf2bd` |
 
-`key_provenance`: 13 findings, every one read at its source line. 9 true (a Django test `SECRET_KEY = "foobar"` in two settings files, 2; PEM private keys in a test-data folder, 2; private keys under `tests/tls/`, 4; a Google-API-key-shaped default in a template script, 1). 2 false (a dictionary mapping environment-variable names to configuration field names, `'PVE_PASSWORD': 'password'` and `'PVE_TOKEN_VALUE': 'token_value'`). 2 either way (a certificate in a file named `without_private.pem`; the placeholder `sk-or-...` in an example env file). 84.6% (69.2%). 7 of the 12 repositories gave no finding; two Python files in one repository (vizier) could not be parsed and are listed as such. Read by the author of the tool; a blind second reader later judged these findings together with set 48's (see below). The map from environment names to field names was fixed afterwards, so the set is tuning data.
+`key_provenance`: 13 findings, every one read at its source line. 9 true (a Django test `SECRET_KEY = "foobar"` in two settings files, 2; PEM private keys in a test-data folder, 2; private keys under `tests/tls/`, 4; a Google-API-key-shaped default in a template script, 1). 2 false (a dictionary mapping environment-variable names to configuration field names, `'PVE_PASSWORD': 'password'` and `'PVE_TOKEN_VALUE': 'token_value'`). 2 either way (a certificate in a file named `without_private.pem`; the placeholder `sk-or-...` in an example env file). 84.6% (69.2%). 7 of the 12 repositories gave no finding; two Python files in one repository (vizier) could not be parsed and are listed as such. Read by the AI model that wrote the tool; a blind second reader later judged these findings together with set 48's (see below). The map from environment names to field names was fixed afterwards, so the set is tuning data.
 
 ## Set 48 (`key_provenance` only, 2026-10-08; measured on an earlier build of 1.1.0; tuning data afterwards)
 
-Drawn on 2026-10-08 from the public repository search (language Python, 250 to 3,500 stars, 300 to 10,000 KB, pushed after 2026-04-01, created before 2023, not archived, not a fork; results page 5), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; seed 20261009; repositories skipped, whatever they contained, when their owner is the author of a Meta-originated or a Chinese-origin project or when they are exploitation tools (one drawn repository, an exploit-search tool, was set aside unread and replaced by the next in the sample; one failed to clone). Cloned shallow, read as text, never run. Only `key_provenance` was run.
+Drawn on 2026-10-08 from the public repository search (language Python, 250 to 3,500 stars, 300 to 10,000 KB, pushed after 2026-04-01, created before 2023, not archived, not a fork; results page 5), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; seed 20261009; repositories were skipped unread under the sourcing rule above, or when they are exploitation tools (one drawn repository, an exploit-search tool, was set aside unread and replaced by the next in the sample; one failed to clone). Cloned shallow, read as text, never run. Only `key_provenance` was run.
 
 | Repository | Commit |
 |---|---|
@@ -244,11 +252,11 @@ Drawn on 2026-10-08 from the public repository search (language Python, 250 to 3
 | scikit-build/scikit-build-core | `92cb8a5f365c780aeb330b4f49cb6e5782af6ed7` |
 | jannisborn/paperscraper | `76a36fb3103055ebeddfa4f35a453c41b5d69370` |
 
-`key_provenance`: 16 findings, every one read at its source line. By the author: 2 true (a test fixture's default password `r4ndom_bUt_memorable`; a Codecov upload token in a workflow), 4 false (`"password": "Password"` in a framework's `strings.json`, 3; `redis_key='_SampleDummyTask_...-run'`, the name of a lock entry, 1), 10 either way (empty strings assigned to password names, 8; `test_token` and `test_key` in a test, 2). 75.0% (12.5%). A blind second reader called the 8 empty values false and agreed on the rest. 7 of 12 repositories gave no finding. All three false classes were fixed afterwards, so the set is tuning data.
+`key_provenance`: 16 findings, every one read at its source line. First reading, by the AI model that wrote the tool: 2 true (a test fixture's default password `r4ndom_bUt_memorable`; a Codecov upload token in a workflow), 4 false (`"password": "Password"` in a framework's `strings.json`, 3; `redis_key='_SampleDummyTask_...-run'`, the name of a lock entry, 1), 10 either way (empty strings assigned to password names, 8; `test_token` and `test_key` in a test, 2). 75.0% (12.5%). A blind second reader called the 8 empty values false and agreed on the rest. 7 of 12 repositories gave no finding. All three false classes were fixed afterwards, so the set is tuning data.
 
 ## Set 49 (`key_provenance` only, 2026-10-08; measured on a build that already dropped empty values; tuning data afterwards)
 
-Drawn on 2026-10-08 from the public repository search (language Python, 250 to 3,500 stars, 300 to 10,000 KB, pushed after 2026-04-01, created before 2023, not archived, not a fork; results page 6), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; seed 20261010; repositories skipped, whatever they contained, when their owner is the author of a Meta-originated or a Chinese-origin project or when they are exploitation tools (one drawn repository, a tool that dumps data through leaked bot tokens, was set aside unread and replaced by the next in the sample). Cloned shallow, read as text, never run. Only `key_provenance` was run.
+Drawn on 2026-10-08 from the public repository search (language Python, 250 to 3,500 stars, 300 to 10,000 KB, pushed after 2026-04-01, created before 2023, not archived, not a fork; results page 6), licence MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0 or ISC, never in an earlier set; seed 20261010; repositories were skipped unread under the sourcing rule above, or when they are exploitation tools (one drawn repository, a tool that dumps data through leaked bot tokens, was set aside unread and replaced by the next in the sample). Cloned shallow, read as text, never run. Only `key_provenance` was run.
 
 | Repository | Commit |
 |---|---|
@@ -265,7 +273,7 @@ Drawn on 2026-10-08 from the public repository search (language Python, 250 to 3
 | ansible/event-driven-ansible | `7512a84083337d22e713f1c94492fa10a17cf729` |
 | qdrant/qdrant-client | `cf747f4b6fa71ba35dfb467931f3fa65f2cdf263` |
 
-`key_provenance`: 88 findings, every one read at its source line by the author and, separately, by a blind second reader given the findings, a few lines of context and the rule. Author: 13 true, 47 false, 28 either way (46.6%; 14.8%). Reader: 12 true, 47 false, 29 either way (46.6%; 13.6%). The two readings agree on 87 of 88 and on all 47 false findings (the one difference is a test configuration's `SECRET_KEY` made of the alphabet). The false findings: JSON-path test strings held in `jp_key` variables (27, one repository), the digest a test expects held in `hmac_digest` (8), the name of the field a vault input reads, `secret_key: "password"` (7), and five single findings (`seed='0'`, a URL path assigned to `token_endpoint`, field-name constants). Two repositories made 80 of the 88 findings; 5 of 12 gave none; one Python file in one repository could not be parsed and is listed as such. All four classes were fixed afterwards: the fixed build reports 43 findings on this set, and the 45 it no longer reports are the 45 the reader had called false, with none added. That is a figure on the set the fixes were made from, and not a measurement.
+`key_provenance`: 88 findings, every one read at its source line by the AI model that wrote the tool and, separately, by a blind second reader given the findings, a few lines of context and the rule. First reading: 13 true, 47 false, 28 either way (46.6%; 14.8%). Reader: 12 true, 47 false, 29 either way (46.6%; 13.6%). The two readings agree on 87 of 88 and on all 47 false findings (the one difference is a test configuration's `SECRET_KEY` made of the alphabet). The false findings: JSON-path test strings held in `jp_key` variables (27, one repository), the digest a test expects held in `hmac_digest` (8), the name of the field a vault input reads, `secret_key: "password"` (7), and five single findings (`seed='0'`, a URL path assigned to `token_endpoint`, field-name constants). Two repositories made 80 of the 88 findings; 5 of 12 gave none; one Python file in one repository could not be parsed and is listed as such. All four classes were fixed afterwards: the fixed build reports 43 findings on this set, and the 45 it no longer reports are the 45 the reader had called false, with none added. That is a figure on the set the fixes were made from, and not a measurement.
 
 ## Set 50 (`key_provenance` only, 2026-10-08; measured on 1.1.0 as published; held out, no change was made from it)
 
@@ -286,9 +294,9 @@ Drawn on 2026-10-08 from the public repository search (language Python, 250 to 3
 | nephila/djangocms-blog | `fcd965f85ea86ca7903704cfaaf972797c90546e` |
 | microprediction/timemachines | `de094835d64a16445179a8537fade2b211d85dd5` |
 
-`key_provenance`: 21 findings from 3 of the 12 repositories (9 gave none; no file was left unparsed). Each was read at its source line by the author, whose verdicts were written down first, and by a blind second reader (a separate model instance given only the findings, a few lines of context and the rule); **the two readings agree on all 21.** 2 true (`hs_secret = "top-secret-value"` and `secret = "top-secret-value"`, which two tests sign HS256 tokens with), 3 false (`CONF_CLIENT_SECRET = "client_secret"` and `CONF_REFRESH_TOKEN = "refresh_token"`, constants whose value is the name of the setting; `NESTED_DOC_KEY = "_childDocuments_"`, the name of a dictionary key), 16 either way (dummy tokens in mocked responses and test settings: `"access_token": "test-token"`, `"refresh_token": "idk-refresh-1"`, `"not-a-jwt"`, `DEMO_CLIENT_SECRET = "faz"`). **85.7% (9.5%)**; Wilson 95% intervals 65.4% to 95.0% and 2.7% to 28.9%. Not fixed: the set stays held out for this build.
+`key_provenance`: 21 findings from 3 of the 12 repositories (9 gave none; no file was left unparsed). Each was read at its source line by the AI model that wrote the tool, whose verdicts were written down first, and by a blind second reader (a separate model instance given only the findings, a few lines of context and the rule); **the two readings agree on all 21.** 2 true (`hs_secret = "top-secret-value"` and `secret = "top-secret-value"`, which two tests sign HS256 tokens with), 3 false (`CONF_CLIENT_SECRET = "client_secret"` and `CONF_REFRESH_TOKEN = "refresh_token"`, constants whose value is the name of the setting; `NESTED_DOC_KEY = "_childDocuments_"`, the name of a dictionary key), 16 either way (dummy tokens in mocked responses and test settings: `"access_token": "test-token"`, `"refresh_token": "idk-refresh-1"`, `"not-a-jwt"`, `DEMO_CLIENT_SECRET = "faz"`). **85.7% (9.5%)**; Wilson 95% intervals 65.4% to 95.0% and 2.7% to 28.9%. Not fixed: the set stays held out for this build.
 
-## Set 38 (no_egress_auditor, held out at version 1.1.0 as shipped, 100%; 99.88% counting either-way claims as false; later builds were compared against it, so it is tuning data now)
+## Set 38 (no_egress_auditor, held out at version 1.1.0 as shipped, 100%; 99.88% counting either-way findings as false; later builds were compared against it, so it is tuning data now)
 
 | Repository | Commit |
 |---|---|
@@ -303,19 +311,14 @@ Drawn on 2026-10-08 from the public repository search (language Python, 250 to 3
 | mymarilyn/clickhouse-driver | `b26f18bc01e1527b6e8759dbd40efd5fdc5787cd` |
 | mixpanel/mixpanel-python | `091b0569eb5df69e9f5e9122bb763f92169d85e2` |
 
-810 findings in 176 distinct claims on the build measured; 0 false; 1 either way: a broken address (`'"mqtt://someplace'`) handed to a
-client's `connect` in a test that expects it to fail before connecting. Every call, command, listener, process and
-markup site was read; the import and dependency kinds were read by module. Later builds read more of each tree and
-add findings, every one read true, and drop none that was true: dependency declarations (in `pyproject.toml`,
-tox.ini, a list `setup()` is given by name, and by distribution name), installs in pipeline files, base images
-Dockerfiles declare, Compose images, `docker buildx build` and `docker compose up`, build tools and test runners
-(`go mod download`, `go build`, `uv build`, `uv run`, `tox`, `python setup.py develop`), name lookups of a host held
-in a variable, `openssl s_client -connect localhost` as `loopback-call` and `openssl s_server -accept` as
-`inbound-listener`, and requirements a `setup.py` adds to its list as it runs (zerorpc-python's three `gevent`
-lines, each read true), and `python -m build`, which installs its build requirements first (three lines, each
-read true), and an example CGI script with a Python shebang that is Python 2 (mechanize's `echo.cgi`, reported
-as not parsed, true). Measured on the build that ships: 867 findings, 0 false, 1 either way. The figure is
-867 / 0 / 1.
+Measured on the build that ships: 867 findings, 0 false, 1 either way: a broken address
+(`'"mqtt://someplace'`) handed to a client's `connect` in a test that expects it to fail before connecting. Every
+call, command, listener, process and markup site was read; the import and dependency kinds were read by module.
+The build first measured gave 810 findings in 176 distinct claims, with the same 0 false and 1 either way. The
+57 added since are dependency declarations, installs in pipeline files, base and Compose images, build tools
+and test runners, name lookups of a host held in a variable, `openssl s_client` and `s_server` calls, requirements a
+`setup.py` adds as it runs, and a Python 2 CGI script reported as not parsed; each was read true, and no
+true finding was dropped.
 
 ## Set 40 (cbom and key_provenance, held out at version 1.1.0 as shipped; later builds were compared against it, so it is tuning data now)
 
@@ -332,20 +335,12 @@ as not parsed, true). Measured on the build that ships: 867 findings, 0 false, 1
 | GehirnInc/python-jwt | `81312b5b205f62252b3768f23157defe866937a8` |
 | Legrandin/pycryptodome | `75cb955742c96f9b67325274c35e4f1cb13685c0` |
 
-`cbom`: 4,188 components; 38 false; 2 either way = 99.09% (99.04%); without pycryptodome 2,292 / 9 / 0 = 99.61%.
-The build that ships also reads Python scripts with no extension: python-tuf's `examples/client/client` and
-`examples/uploader/uploader` add three SHA-256 uses, each read true. Reading `random.SystemRandom` as the operating
-system's generator, a hash named to `hmac` by string, and a JWT decoded with `verify_signature` off replaces two
-entries (yubikey-manager's and aws-encryption-sdk-python's `SystemRandom`, read true before and after) and adds
-two, each read true (sigstore-python's unverified claims, yubikit's HMAC-SHA1). `hmac.compare_digest` compares two
-values and computes no MAC, so it is no longer listed as HMAC: 14 entries leave (pyseto 10, python-jwt 2,
-aws-encryption-sdk-python 1, yubikey-manager 1), each read true as a call of the `hmac` library before. A hash
-named through a name bound once adds one entry, read true (python-tuf's `hashlib.new(_HASH_ALGORITHM)`, SHA-256),
-and four `import hmac` lines of modules that use `hmac` only for `compare_digest` leave (read true as a library
-before) while the hash a `pbkdf2_hmac` call names adds one (yubikit's SHA-1, read true), so the figure is
-4,177 / 38 / 2 = 99.09% (99.04%), and without pycryptodome 2,281 / 9 / 0 = 99.61%. The OpenSSL name
-`DES-EDE3-CBC` read as 3DES adds two entries in pycryptodome's PEM and PBES code, read true: **4,179 / 38 / 2 =
-99.09% (99.04%)**; without pycryptodome unchanged.
+`cbom`, on the build that ships: **4,179 components; 38 false; 2 either way = 99.09% (99.04%)**; without
+pycryptodome 2,281 / 9 / 0 = 99.61%. The build first measured gave 4,188 / 38 / 2. Entries added since, each read
+true: Python scripts with no extension, `random.SystemRandom` as the operating system's generator, a hash named to
+`hmac` by string or through a name bound once, a JWT decoded with `verify_signature` off, the hash a `pbkdf2_hmac`
+call names, and `DES-EDE3-CBC` as 3DES. Entries removed, each read true before as a use of the `hmac` library: `hmac.compare_digest`, which
+compares two values and computes no MAC, and `import hmac` in modules that use it for nothing else.
 False: an error message, a skip reason or a test-vector label naming an algorithm (38). Either way: an assertion
 searching output for private-key armour (2).
 
@@ -357,10 +352,9 @@ reading attribute and configuration-entry bindings adds aws-encryption-sdk's moc
 either way), a GPG subkey ID (false, a listed class) and private JSON Web Keys in test fixtures (python-jwt 3,
 pyseto 3; and 13 in pycryptodome's vectors), true. False: an identifier named with a key word (45), an encryption-context entry named `*_key` (23), a
 secrets-manager reference in a build file (9), a keyring entry's default name (1). Either way: salts, public and
-wrapped keys, empty defaults. These classes are left in. The 487 findings outside pycryptodome were judged again,
-blind, by a second reader (an AI model given the same question and no first verdicts): 446 agreed; it ruled false
-all 76 the first reading had ruled false and 2 more, of which the figures take one; the figures also take its verdict
-where the first reading had counted an empty default or a public key true. The GPG subkey ID found since makes 78.
+wrapped keys, empty defaults. These classes are left in. The 487 findings outside pycryptodome were judged again, blind, by a second reader (an AI model given the same question and no first verdicts). It agreed on 446 and called false all 76 the first reading had called false,
+plus 2 more; the figures count one of those 2 as false, and take its verdict where the first reading had counted
+an empty default or a public key true. A GPG subkey ID found later, false, brings the count to 78.
 
 ## Set 39 (cbom and key_provenance, measured on an earlier build of 1.1.0; tuning data now)
 
@@ -393,7 +387,7 @@ defaults (13), public keys (10). Handled in the build that ships: PyNaCl is clas
 message is not a use, and armour holds a key only with a body; key_provenance's names, URNs, OIDs, option
 words, pipeline expressions and RFC 6979's reassigned key likewise.
 
-## Set 38 for cbom and key_provenance (tuning data now)
+## The set 38 repositories, read for cbom and key_provenance (tuning data now)
 
 The same ten repositories as set 38 above, read for `cbom` and `key_provenance` on an earlier build of 1.1.0:
 `cbom` 181 components, 14 false, 22 either way; `key_provenance` 65 findings, 26 false, 5 either way. Their
@@ -1048,8 +1042,9 @@ does not depend on that. Every false class it showed is handled in the version t
 ## Set 4: installed packages, measured on an earlier build of version 1.1.0
 
 Not repositories at a commit: the packages as installed from PyPI into one environment, read where they sat.
-Each row is a distribution and its version. `attrs` was in that environment and is left out, because it is in
-an earlier set.
+Each row is a distribution and its version. `attrs` was in that environment and is left out because its repository is in the tuning set;
+`packaging`, `pluggy` and `sortedcontainers` (tuning set) and `wheel` (set 1) were kept although their repositories
+are in earlier sets too, so the rule was not applied evenly.
 
 | Distribution | Version |
 |---|---|

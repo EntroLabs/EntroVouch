@@ -16,12 +16,12 @@ opens an element whose text, up to its closing tag, is text whatever it holds (a
 apart from its `{...}` expressions and the tags inside them; outside the elements it follows, a backquote after a
 plain word and a space or straight after a tag's `>` is text. An element has text only where the file closes it
 somewhere (`</Name>`), so a type parameter list (`const pick: <T>(xs: T[]) => T`) is not taken for one, and a bare
-`<Name>` straight before `(` is read both as an element and as type parameters. The JSX reading is kept,
-with the others' code where it keeps nothing. Elsewhere every
-backquote opens a template (as is a
-backquote or `/*` never closed, and `/*` straight after a name, `src/*`), and a regular expression is recognised by
-what precedes it, the `)` of an `if`, `while` or `for` condition included; this is a heuristic, not an ECMAScript
-parser, and the words of JSX text are read as code (`<p>Don't fetch(u) here</p>` is reported as a call). An import in a page's or component's `<script>` (an attribute may hold `<` and `>`), an Astro component's
+`<Name>` straight before `(` is read both as an element and as type parameters. The code the JSX reading finds is
+kept, and where it finds none the plain reading's code is used. Because the plain JavaScript reading also runs, the
+words of JSX text are read as code too: `<p>Don't fetch(u) here</p>` is reported as a call. Outside JSX every
+backquote opens a template; a backquote or `/*` never closed opens nothing, and neither does `/*` straight after
+a name (`src/*`): the code after it is still read. A regular expression is recognised by what precedes it, the `)` of an `if`, `while` or `for` condition included. This
+is a heuristic, not an ECMAScript parser. An import in a page's or component's `<script>` (an attribute may hold `<` and `>`), an Astro component's
 front matter or an MDX file's top-level `import` is read as the same import in a `.js` file. Deno's `npm:x`
 names the npm package `x`; a `jsr:` package is listed in `unlisted_js_imports`.
 
@@ -130,7 +130,8 @@ names the npm package `x`; a `jsr:` package is listed in `unlisted_js_imports`.
   `Jenkinsfile.*`, `*.jenkinsfile`) each `sh`, `bat` or `powershell` step's string is a command, the `httpRequest`
   step, a checkout (`checkout scm`, the `git` step) and a Groovy read of an address (`new URL(u).text`,
   `.toURL().openStream()`) are commands, and a
-  `docker { image '...' }` agent is an image the job runs in (`declared-remote-source`). A line
+  `docker { image '...' }` agent is an image the job runs in (`declared-remote-source`); written on one line
+  together with the steps that follow it, the image is not reported. A line
   continues with the file's own character: `\` in a POSIX shell and a Dockerfile (or what its `# escape=`
   directive names), `^` in cmd, a backquote in PowerShell; `powershell -Command` and `cmd /c` run what
   follows.
@@ -149,7 +150,10 @@ names the npm package `x`; a `jsr:` package is listed in `unlisted_js_imports`.
   the calling code is already deep; Python 3.14 sets its limit from the stack it finds. Without one lower limit the
   same file would be read on one machine, or from one caller, and not on another. A JSON file (`package.json`, a
   notebook) nested deeper than 900 levels is likewise not read, on every version: Python's own JSON reader accepts
-  990 levels on 3.11 and, on 3.14, as many as the stack allows.
+  990 levels on 3.11 and, on 3.14, as many as the stack allows. TOML manifests (`pyproject.toml`, `Pipfile`) are
+  not yet held to a limit of their own: arrays nested 400 levels deep are read when the tools are called directly and
+  reported as not parsed when they are called from 300 frames down; past about 500 levels of arrays, or
+  about 330 of inline tables, the file is not read. A file not read is reported as not parsed, never as clean.
 - **Python is read the way Python reads it.** The file's encoding cookie and BOM are
   honoured (so a `# coding:` line cannot hide an import from the auditor that the interpreter
   executes), the extension is matched without regard to case, a file with no extension, `.cgi` or `.fcgi` and a
@@ -307,7 +311,9 @@ names the npm package `x`; a `jsr:` package is listed in `unlisted_js_imports`.
   `files_not_read` is the count of all three, printed beside the files scanned, so a `CLEAN`
   that rests on one file out of forty says so. A tree in which nothing was read is `NOT-ANALYSED`,
   exit 2, never `CLEAN`. Compiled modules, shared libraries, executables, wheels, archives
-  and pickled objects in the tree are `unanalysed-artifact` findings; an executable or a shared library with no
+  and pickled objects in the tree are `unanalysed-artifact` findings, unless the file is non-empty UTF-8 text of at most 1 MiB (counted with CRLF as
+  LF), with no NUL byte and no zip or `ar` header, that is not a pickle (Cython source, `.pyx` and `.pxd`, is
+  always a finding), when it is counted by its extension as a file not read; an executable or a shared library with no
   extension or a version for one (`bin/tool`, `libx.so.1`), or one named as a script, a JavaScript, TypeScript or markup file
   (`tool.sh`, `app.js`), is recognised by its first bytes (ELF, Mach-O, PE).
 

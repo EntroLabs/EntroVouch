@@ -1,14 +1,16 @@
 # CONFORMANCE: what this project claims about the standards it names
 
-**Last verified 2026-10-02.** Regenerate when the answers change.
+**Last verified 2026-10-09.** Regenerate when the answers change.
 
 > **Naming a standard is a CHECKABLE claim.** A hostile reader can test it in an afternoon
 > using free published vectors, which makes it among the first things checked and the most
-> damaging to get wrong. So every standard named anywhere in this project is listed below with
-> what actually backs it: a test, or an explicit statement that conformance is not claimed.
+> damaging to get wrong. So every standard this project's output or signer follows is listed below
+> with what actually backs it: a test, or an explicit statement that conformance is not claimed.
+> Standards and regulations the documentation only cites are listed at the end, under "Cited, not
+> followed".
 >
 > **Self-consistency is not conformance.** An implementation can be internally coherent,
-> pass every test its own authors thought to write, and still interoperate with nothing -
+> pass every test its own authors thought to write, and still interoperate with nothing:
 > matching parameters do not make a matching construction. Only an external reference tells
 > the two apart, so every claim below names the reference that backs it.
 
@@ -18,13 +20,14 @@
 
 **VALIDATED when the suite runs with `jsonschema` installed** (`pip install -e .[test]`;
 a clean clone skips the schema tests rather than failing). `entrovouch/cyclonedx.py` output
-validates against the official `bom-1.6.schema.json` with **zero errors**. The schema file is pinned by hash, and the
-validator was negative-tested against six deliberately malformed documents before its
-zero was believed. Test: `tests/test_cyclonedx_schema.py`.
+validates against the official `bom-1.6.schema.json` with **zero errors**. The schema file is pinned by a 64-bit prefix of
+its SHA-256, and the test also runs the validator against six deliberately malformed documents, which
+it must reject. Test: `tests/test_cyclonedx_schema.py`.
 
 **Conformance to CycloneDX 1.7 is NOT claimed**: nothing here has been run against that
-revision's schema. 1.7 is the CBOM-shaped revision (certificates, protocols, algorithm
-family). This emitter still writes `assetType: algorithm` only.
+revision's schema. 1.7 (ECMA-424, 2nd edition) adds a standard list of algorithm families and
+elliptic curves for cryptographic assets. This emitter writes `assetType: algorithm` only, because the
+tool finds algorithms, not certificates or protocols.
 
 **A finding about the standard rather than about us:** CycloneDX 1.6 declares `specVersion` as
 a plain string with `"1.6"` only as an *example*: no `enum`, no `const`: so a document claiming
@@ -88,7 +91,7 @@ the strength of not having looked. Identifiers are weakness classes (`CWE-327`, 
 **SCHEMA VALIDATED. MANDATORY TESTS ASSERTED ONE BY ONE, NO CONFORMANCE CHECKER RUN.**
 `entrovouch/csaf.py` writes a `csaf_vex` document carrying the same statements as the
 CycloneDX VEX output. It is validated by a test against the CSAF 2.0 JSON schema published by
-OASIS, pinned by hash in `tests/schemas/csaf-2.0.schema.json`. The standard's section 6.1
+OASIS, `tests/schemas/csaf-2.0.schema.json`, pinned in `tests/test_csaf.py` by a 64-bit prefix of its SHA-256. The standard's section 6.1
 lists mandatory tests a schema cannot express; the ones this output could break are asserted
 by name in `tests/test_csaf.py` (6.1.1 product ids defined, 6.1.11 CWE names, 6.1.16 and
 6.1.18 version and revision history, 6.1.27 the VEX profile's status and identifier rules).
@@ -153,6 +156,17 @@ The artifact says so in its own metadata rather than implying a compliance nobod
 
 <sub>Named in: `entrovouch/cyclonedx.py`</sub>
 
+
+### Package URL (purl)
+
+**FORM TESTED; THE SPECIFICATION'S OWN TEST SUITE IS NOT RUN.** `sbom` writes each component's identifier as a
+package URL (`pkg:pypi/...`, `pkg:npm/...`, `pkg:conda/...`), with the PyPI name normalised as the purl rule
+for PyPI says. The tests check the PyPI and npm identifiers; `pkg:conda` identifiers are untested and are
+normalised as PEP 503 normalises a PyPI name (`.` and `_` become `-`), so `ruamel.yaml` is written
+`pkg:conda/ruamel-yaml`, a form conda does not use. The purl project's published test data is not run, so conformance is not claimed.
+
+<sub>Named in: `entrovouch/sbom.py`, `docs/WHAT_IS_READ.md`</sub>
+
 ---
 
 ## What this file does and does not do
@@ -165,6 +179,28 @@ The artifact says so in its own metadata rather than implying a compliance nobod
   argument is that you should not have to. Anything not reproducible from this checkout is not
   cited here.
 
-Checked by `tests/test_conformance_claims.py`: every standard named here must carry either a
-conformance test against that standard's own schema or vectors, or a stated disclaimer. There
-is no third option.
+Checked by `tests/test_conformance_claims.py` for the ten sections it names: for eight of them, that they carry their
+status words (VALIDATED, NOT CLAIMED, DETECTOR TOKENS ONLY and the rest), every file a "Named in" line points to
+names the standard, and for CSAF the named test file exists. Nothing in it checks that a section's test
+passes, and a section added later, or a standard newly named in the code, is not checked by it; keeping
+this file right is part of review.
+
+## Cited, not followed
+
+These are named in the documentation or the code to explain a scope or a detection. None is a
+conformance claim.
+
+- **FIPS 206 (FN-DSA).** A detector token in `cbom`, like FIPS 203 to 205. The standard was not
+  final as of 2026-10-09.
+- **Regulation (EU) 2024/2847, the Cyber Resilience Act.** Cited for the scope of the SBOM it asks
+  for (Annex I Part II(1)): at least the top-level dependencies, from 11 December 2027. `sbom` is built
+  to that scope, for declared dependencies only, before any build. No presumption of conformity is claimed; the
+  harmonised standards were still in draft as of 2026-10-09.
+- **ISAE 3000 and SSAE 18.** Cited to say what kind of assurance a result is. EntroVerse is not an
+  audit firm, and running these tools is not an engagement under either standard.
+- **PEP 621 and PEP 440.** PEP 621 says where `pyproject.toml` declares dependencies, one of the places where
+  `sbom` and the auditor read them; PEP 440 gives the normal form of a version written into a
+  package URL.
+- **PEP 578 (audit hooks).** Used by `tests/test_runtime_oracle.py` as an independent oracle.
+- **RFC 6962 domain tags.** Borrowed by the signer's Merkle tree (see its section); RFC 6962 itself
+  is not implemented.

@@ -64,8 +64,8 @@ takes `--label`.
 - `cbom` lists the cryptography the Python code uses, by library, call and algorithm name, and marks what a quantum
   computer would break. `REVIEW-NEEDED` means something it found needs a person to classify it.
 - `key_provenance` looks for key material and credentials written into the tree, in code, key files, `.env` and
-  configuration files, notebooks and archives. Its verdict is always `REVIEW`: whether a key in the tree is a defect
-  depends on who receives the artifact.
+  configuration files, notebooks and archives. Any finding makes the verdict `REVIEW`: whether a key in the
+  tree is a defect depends on who receives the artifact.
 - `sbom` writes a CycloneDX 1.6 inventory of the dependencies the tree declares, top level only and before any build.
   The EU Cyber Resilience Act
   ([Regulation (EU) 2024/2847](https://eur-lex.europa.eu/eli/reg/2024/2847/oj), Annex I Part II(1)) asks for at least
@@ -100,12 +100,14 @@ audit(Path("/path/to/project"), label="org/repo@commit").findings_digest
 
 | Field | Reproduces? | What it answers |
 |---|---|---|
-| `findings_digest` | yes, across runs, processes and machines | *Does this tool, on this tree, still say this?* |
-| `subject_digest` | yes, per tree | *Which tree was audited?* |
-| `content_hash` | no, by design | *Is this the exact artifact I was handed?* |
+| `findings_digest` | yes, across runs, processes and machines (see the Windows exception in REPRODUCING) | *Does this tool, on this tree, still say this?* |
+| `subject_digest` | yes, per tree and tool (same exception) | *Which tree was audited?* |
+| `content_hash` | no for egress, CBOM and SBOM; yes for `key_provenance` with the same label and tree | *Is this the exact artifact I was handed?* |
 
-Compare `findings_digest`; `content_hash` covers the time of issue and differs on every run. `key_provenance` has no
-findings digest: re-run it and read the findings. Details: [docs/REPRODUCING.md](docs/REPRODUCING.md).
+Compare `findings_digest`; on the egress, CBOM and SBOM reports `content_hash` covers the time of issue and differs
+on every run. `key_provenance` has no findings digest: re-run it and read the findings. Its `content_hash` has no
+issue time and matches when the label, the files read (line endings aside) and the number of files in each
+skipped folder, such as `.git/`, are the same. Details: [docs/REPRODUCING.md](docs/REPRODUCING.md).
 
 ### Exit codes
 
@@ -152,10 +154,11 @@ standard.
 
 ### How often is it wrong?
 
-Each tool was run on public Python repositories drawn at random with a fixed seed and pinned to a commit. Every
-finding was read at its source line against one question: is what it says about that line true? A finding defensible
-either way is counted both ways. The figures are for this release, on sets no change was made from; every set is in
-[PRECISION_CORPUS.md](PRECISION_CORPUS.md).
+Each tool was run on public Python repositories drawn from public search results and pinned to a commit. Findings
+that say the same thing about the same kind of line form one claim; at least one site of each claim was read
+against one question, is what it says about that line true, and its verdict applies to all its findings. A finding
+defensible either way is counted both ways. The figures are for this release, on sets no fix was made from; every
+set is in [PRECISION_CORPUS.md](PRECISION_CORPUS.md).
 
 | Tool | Sets | Findings | False | Either way | Precision |
 |---|---|---|---|---|---|
@@ -200,7 +203,7 @@ We wrote all of these programs and forms, so code written by someone else may do
 
 ## Signing
 
-One signer ships: Lamport-Merkle over SHA3-256, resting on SHA3-256 preimage resistance alone. It claims conformance
+One signer ships: Lamport-Merkle over SHA3-256, resting on the preimage and collision resistance of SHA3-256 and on SHA3-256 behaving as a pseudorandom function when the secrets are derived from the seed. It claims conformance
 to no published standard and does not meet NIST SP 800-208, which requires stateful keys to live in a hardware
 module; this key is a file. Each leaf signs once, so keep one copy of the key that signs, and run
 `python -m entrovouch.no_egress_auditor --key PATH --advance-key N` before a restored copy signs again. With the root

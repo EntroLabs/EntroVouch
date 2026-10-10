@@ -34,7 +34,7 @@ It reads:
 Armour with no key under it, such as a placeholder like `<paste your key here>`, is not reported as a key in any file.
 What the tool did not read, or read only in part, is listed.
 
-Its verdict is always `REVIEW`: whether key material anyone can derive is a defect depends on who receives the
+Any finding makes its verdict `REVIEW`, never a pass: whether key material anyone can derive is a defect depends on who receives the
 artifact, and source code cannot tell you that. Its report carries a content hash and is not signed. A key handed to
 a MAC as bytes (`KEY.encode()`, `bytes(KEY, "utf-8")`), by position or as `key=`, is traced back to its literal. It
 does not detect a password written inside a connection URL (`postgresql://user:secret@host`).

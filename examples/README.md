@@ -1,6 +1,6 @@
 # Verify our output yourself
 
-**You do not have to trust anything in this repository.** Every report in
+**You do not have to trust our published reports.** Every report in
 `reports/` was produced by the tools in this repository, from the fixture tree in
 `sample_service/`, and you can regenerate all of them in one command and compare.
 
@@ -26,14 +26,16 @@ python -c "import json;print(json.load(open('examples/reports/egress.json'))['fi
 ```
 
 If those match, **the tool on your machine produced exactly what we published.**
-No account, no upload, no network call: the auditors have no network code in them,
-which is the property they exist to demonstrate and which you can check by running
-them on themselves.
+No account, no upload, no network call: the auditors import no network module.
+Read the source, or run the auditor on `entrovouch/`; it reports `CLEAN`, which is
+evidence, not proof.
 
 ## What will NOT match, and why that is correct
 
-`content_hash` and `scanned_at_utc` **differ on every run.** `content_hash`
-covers the issuance timestamp, so two honest runs produce two different values.
+On the egress, CBOM and SBOM reports, `content_hash` and `scanned_at_utc` **differ on
+every run.** `content_hash` covers the issuance timestamp, so two honest runs produce two
+different values. The `key_provenance` report has no timestamp, so its `content_hash` matches
+when the label, the files read and the number of files in each skipped folder are the same.
 
 > **This is the mistake to avoid.** A reader who compares `content_hash`, sees a
 > mismatch and concludes the report was forged has followed the most obvious instinct
@@ -43,8 +45,8 @@ covers the issuance timestamp, so two honest runs produce two different values.
 ## An asymmetry we would rather state than have you find
 
 **`key_provenance` emits no findings digest.** Its report carries findings, a scope
-statement and a content hash that shows an edit, and it is not signed, so the one-value
-comparison above does not work for it: re-run it and read the findings. Egress, CBOM and SBOM
+statement and a content hash with no timestamp in it, and it is not signed: re-run it
+and read the findings. Egress, CBOM and SBOM
 carry `findings_digest`. This is pinned in `tests/test_examples_reproduce.py` so it
 cannot silently become true of another tool without someone noticing.
 
@@ -58,7 +60,9 @@ publishes:
 python -m entrovouch.verify examples/signed/egress.json --root eb309717634b3a9bd952aac903538bd9b3350d1b006f5176d1c87763ba87a96b
 ```
 
-It prints `ATTESTED`. Without `--root` it prints `UNVERIFIED`, and after any edit to the file, `TAMPERED`. Its
+It prints `ATTESTED`. Without `--root` it prints `UNVERIFIED`, and after any change to a value in the file, `TAMPERED` (or an error, exit 2, if `tool` no longer
+names a report this tool signs);
+reformatting the JSON does not change what is signed. Its
 `findings_digest` is the one in the table above, because it is the same audit. The key is not in this repository,
 so `regenerate.py` does not re-sign it; `tests/test_signed_example.py` fails when the signed copy no longer matches
 the current audit.
@@ -86,7 +90,7 @@ nothing:
 **An auditor that flags everything is not strict, it is unusable**, and the
 committed reports show it staying quiet where it should.
 
-## Hand this to a prospect
+## Short version
 
 No account. No upload. The tools need nothing installed; the test suite needs `pytest`.
 
@@ -99,9 +103,9 @@ python examples/regenerate.py
 
 Then compare **one value**: `findings_digest` in `examples/reports/egress.json`
 against the digest table at the top of this page. If it matches, the tool on
-their machine produced exactly what we published.
+your machine produced exactly what we published.
 
-What they are looking at is limited assurance: nothing came to our attention,
+What you are looking at is limited assurance: nothing came to our attention,
 not a proof of absence. Independent issuance of that same report is the paid
 layer: same tool, a third party on the signature.
 
@@ -110,12 +114,12 @@ layer: same tool, a third party on the signature.
 - **Static analysis only.** It audits the source you point it at. It does not
   observe runtime behaviour, and it cannot see egress introduced by a dependency it
   was not pointed at, by dynamic loading, or by a compiled extension.
-- **Detection-grade, not proof.** Detection is list-based: a network library that is
-  not on the list produces no finding, and the report names it in `unlisted_imports`
+- **Detection-grade, not proof.** Detection is list-based: a third-party network library
+  that is not on the list produces no finding, and the report names it in `unlisted_imports`
   instead. What the auditor catches when names are disguised, and what it misses, is
   measured in the root README's recall table. The reports state their scope in their
   own body rather than leaving you to discover it.
-- **A signature proves origin and integrity, not correctness.** The reports in
-  `reports/` are **UNSIGNED** on purpose: they are the half that needs no trust at all.
+- **A signature, checked against a pinned root, proves origin and integrity, not correctness.** The reports in
+  `reports/` are **UNSIGNED** on purpose: they are the half you can regenerate and compare yourself.
   One signed copy sits in `signed/`, described below.
 - **`REVIEW` means review.** It is not a pass.

@@ -1,7 +1,8 @@
 # Signing
 
-One signer ships: Lamport-Merkle over SHA3-256. Its security rests on SHA3-256 preimage resistance alone. Keys are
-one-time, and the leaf index is saved before any secret is revealed. A signature is about 16.7 KB, or about 36 KB as
+One signer ships: Lamport-Merkle over SHA3-256. Its security rests on the preimage and collision resistance of SHA3-256, and on SHA3-256 as a
+pseudorandom function for deriving the one-time secrets from the seed.
+Each leaf is one-time, and the leaf index is saved before any secret is revealed. A signature is about 16.7 KB, or about 36 KB as
 hex inside a JSON report.
 
 It claims conformance to no published standard. In particular it does not meet NIST SP 800-208, which requires
@@ -28,7 +29,7 @@ With the root pinned, a signature shows that the report came from the holder of 
 unchanged. It says nothing about whether the verdict is correct. The algorithm name and the public root are inside
 the signed bytes, so editing either gives `TAMPERED`.
 
-The root is 64 hex digits, in either case; anything else is refused with exit 2.
+The root is 64 hex digits, in either case, with surrounding whitespace ignored; anything else is refused with exit 2.
 
 `verify_report` returns `ok` as `True` for `ATTESTED` only; `UNSIGNED` and `UNVERIFIED` are `False`. `TAMPERED` covers:
 
