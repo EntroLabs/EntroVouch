@@ -5,13 +5,9 @@ __pycache__/
 *.egg-info/
 .venv/
 
-# Internal documents: must never reach the public repo.
-# ENTROVOUCH is single-branch by design: there is no internal branch to hide
-# them on, so they are excluded here instead. This makes the separation
-# structural rather than a thing someone has to remember at commit time.
-Project_Log.md
-STATUS.md
-NEXT.md
+build/
+dist/
+
 
 # SIGNING KEY MATERIAL: never, under any circumstance, in this repository.
 # The keyfile holds the master seed for the Merkle signing identity. Anyone

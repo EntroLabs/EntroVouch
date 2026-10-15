@@ -298,7 +298,7 @@ def test_the_nonce_must_follow_the_imprint(tmp_path):
     token.write_bytes(_der_seq(_der_seq(_der_int(0)), _der_octet(digest)))     # no nonce
     r = _cli("timestamp", "check", rep, "--token", token, "--nonce", 1)
     assert r.returncode == 1 and "does NOT echo the nonce" in r.stdout
-    token.write_bytes(_der_seq(_der_seq(_der_int(0)), _der_octet(digest), _der_int(77)))
+    token.write_bytes(_tst_response(digest, nonce=77))
     assert _cli("timestamp", "check", rep, "--token", token, "--nonce", 77).returncode == 0
     r = _cli("timestamp", "check", rep, "--token", token, "--nonce", -5)
     assert r.returncode == 2 and "did not complete" not in r.stderr
@@ -423,3 +423,49 @@ def test_text_from_the_tree_cannot_become_markup_in_a_report(tmp_path):
     row = [ln for ln in smd.splitlines() if ln.startswith("| ``")][0]
     assert row.startswith("| `` left-pad`<img src=x> `` |")
     assert markdown_code("plain") == "`plain`" and markdown_cell("a_b") == "a\\_b"
+
+
+# ---------------------------------------------------------------- the nonce field of the TSTInfo
+def _tst_response(digest, *, nonce=None, extra_int=None):
+    """A TimeStampResp shaped as RFC 3161 gives it: status, then a SignedData whose content is the DER of a TSTInfo
+    (version, policy, messageImprint, serialNumber, genTime, optional accuracy and ordering, optional nonce)."""
+    from entrovouch.timestamp import _der_bool, _der_int, _der_octet, _der_oid, _der_seq, _tlv
+    fields = [_der_int(1), _der_oid((1, 2, 3, 4)),
+              _der_seq(_der_seq(_der_oid((2, 16, 840, 1, 101, 3, 4, 2, 1)), _tlv(0x05, b"")), _der_octet(digest)),
+              _der_int(42), _tlv(0x18, b"20261009120000Z"), _der_seq(_der_int(1)), _der_bool(False)]
+    if nonce is not None:
+        fields.append(_der_int(nonce))
+    tst = _der_seq(*fields)
+    content = _der_seq(_der_oid((1, 2, 840, 113549, 1, 9, 16, 1, 4)), _tlv(0xA0, _der_octet(tst)))
+    signed = _der_seq(_der_int(3), _tlv(0x31, b""), content, _tlv(0x31, b""))
+    parts = [_der_seq(_der_int(0)), _der_seq(_der_oid((1, 2, 840, 113549, 1, 7, 2)), _tlv(0xA0, signed))]
+    if extra_int is not None:
+        parts.append(_der_int(extra_int))
+    return _der_seq(*parts)
+
+
+def test_the_nonce_is_read_from_the_tstinfo_field(tmp_path):
+    _write(tmp_path / "p", "a.py", "x = 1\n")
+    rep = tmp_path / "r.json"
+    _cli("no_egress_auditor", tmp_path / "p", "--json", rep)
+    digest = report_digest(rep)
+    token = tmp_path / "t.tsr"
+    token.write_bytes(_tst_response(digest, nonce=77))
+    assert _cli("timestamp", "check", rep, "--token", token, "--nonce", 77).returncode == 0
+    r = _cli("timestamp", "check", rep, "--token", token, "--nonce", 78)
+    assert r.returncode == 1 and "does NOT echo the nonce" in r.stdout
+
+
+def test_an_integer_elsewhere_in_the_token_is_not_the_nonce(tmp_path):
+    """The nonce bytes appearing after the imprint, but outside the TSTInfo's nonce field, do not count."""
+    _write(tmp_path / "p", "a.py", "x = 1\n")
+    rep = tmp_path / "r.json"
+    _cli("no_egress_auditor", tmp_path / "p", "--json", rep)
+    digest = report_digest(rep)
+    token = tmp_path / "t.tsr"
+    token.write_bytes(_tst_response(digest, nonce=None, extra_int=77))
+    r = _cli("timestamp", "check", rep, "--token", token, "--nonce", 77)
+    assert r.returncode == 1 and "does NOT echo the nonce" in r.stdout
+    token.write_bytes(_der_seq(_der_seq(_der_int(0)), _der_octet(digest), _der_int(77)))
+    r = _cli("timestamp", "check", rep, "--token", token, "--nonce", 77)
+    assert r.returncode == 1 and "does NOT echo the nonce" in r.stdout

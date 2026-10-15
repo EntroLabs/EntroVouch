@@ -150,10 +150,11 @@ names the npm package `x`; a `jsr:` package is listed in `unlisted_js_imports`.
   the calling code is already deep; Python 3.14 sets its limit from the stack it finds. Without one lower limit the
   same file would be read on one machine, or from one caller, and not on another. A JSON file (`package.json`, a
   notebook) nested deeper than 900 levels is likewise not read, on every version: Python's own JSON reader accepts
-  990 levels on 3.11 and, on 3.14, as many as the stack allows. TOML manifests (`pyproject.toml`, `Pipfile`) are
-  not yet held to a limit of their own: arrays nested 400 levels deep are read when the tools are called directly and
-  reported as not parsed when they are called from 300 frames down; past about 500 levels of arrays, or
-  about 330 of inline tables, the file is not read. A file not read is reported as not parsed, never as clean.
+  990 levels on 3.11 and, on 3.14, as many as the stack allows. A TOML manifest (`pyproject.toml`, `Pipfile`)
+  nested deeper than 100 levels of arrays or inline tables is not read either, on every version and from every
+  caller; it is reported as not parsed, never as clean. Python source longer than 4,194,304 characters once
+  decoded is not parsed by any tool (a syntax tree takes several hundred times its source in memory) and is reported
+  as not parsed.
 - **Python is read the way Python reads it.** The file's encoding cookie and BOM are
   honoured (so a `# coding:` line cannot hide an import from the auditor that the interpreter
   executes), the extension is matched without regard to case, a file with no extension, `.cgi` or `.fcgi` and a
@@ -291,6 +292,18 @@ names the npm package `x`; a `jsr:` package is listed in `unlisted_js_imports`.
   unanalysed region is not "nothing found." A warning the audited file would raise when
   compiled (an invalid escape in a string) is that file's, not the auditor's: it is not
   printed, and running Python with warnings turned into errors does not change a report.
+- **Python that Python cannot decode is not read another way.** Bytes that are not UTF-8 with no encoding
+  declaration, or a declaration naming an unknown codec, make a file the interpreter refuses; every tool's Python reader reports it
+  as not parsed (`unparseable-source`, or listed in `files_not_parsed`). A `setup.py` is also read as a dependency
+  manifest, as UTF-8 with undecodable bytes replaced, so the auditor's declared dependencies and `sbom` still list what
+  it declares.
+- **Forms these tools do not read, stated so a `CLEAN` is not read as covering them:** a network fetch made by a
+  standard-library call that runs another program (`venv.EnvBuilder(with_pip=True)`), a module reached through
+  `sys.modules`, programs not on the list (`tftp`, `grpcurl`), and the commands in `.envrc`, a dev container's
+  `postCreateCommand`, `.vscode/tasks.json`, `Taskfile.yml`, `.pre-commit-config.yaml`, CMake `file(DOWNLOAD)` and
+  Bazel `http_archive`. Files of those types are counted as not read. Two files whose names are one name after
+  Unicode NFC are both read, and each finding names its file in the form it is stored in: the two print alike and
+  differ byte for byte.
 - **What was not read is listed.** Every no-egress report carries `not_scanned`: the directories the
   scan skips by name wherever they sit inside the tree (`.git`, `build`, `dist`, `venv`,
   `.venv`, `node_modules`, `__pycache__`, `.mypy_cache`, `.pytest_cache`, `.hypothesis`,
@@ -364,3 +377,19 @@ names the npm package `x`; a `jsr:` package is listed in `unlisted_js_imports`.
   `inbound-listener`, never egress. A raw socket's `bind` and `listen`, and a web framework's
   `run(host=...)`, are not reported at their line; the import of their package is.
 
+## Radio and peripheral links
+
+- **A radio or peripheral link is a finding, and it is not network egress.** A Python import of a library whose
+  purpose is a link off the device that is not the IP network is `peripheral-link`: Bluetooth (`bleak`, `bluetooth`
+  from PyBluez, `bluepy`, `pygatt`, `simplepyble`), mesh and Zigbee radios (`meshtastic`, `zigpy` and its radio
+  drivers `zigpy_*`), a CAN bus (`can`, from python-can), a serial line (`serial`, from pyserial) and USB (`usb`,
+  from pyusb). Data can leave the device over such a link, so a tree whose only outbound channel is one of these links
+  is not `CLEAN`; what reaches the device at the other end is not visible in source, so the finding means review. The list
+  is `PERIPHERAL_LINK_MODULES` in `entrovouch/no_egress_auditor.py`.
+- **What this does not cover.** Only Python imports of those names are reported. A dependency declared in a
+  manifest (`pyserial` in `requirements.txt`), a JavaScript package (`serialport`, `noble`, `usb`), a device file
+  opened by path (`open("/dev/ttyUSB0")`), a radio or peripheral library not on the list (`serial_asyncio`,
+  `pyvisa`) and one imported by a name built at run time give no `peripheral-link` finding; a name built at run
+  time is reported as `dynamic-exec`. A module the tree holds under one of these names (`serial.py` at the top of the tree) shadows the
+  installed library and is listed in `shadowed_imports`, as it is for a network library. An unrelated package
+  installed under the same top-level name (PyPI's `serial` is also a serialization library) is reported all the same.

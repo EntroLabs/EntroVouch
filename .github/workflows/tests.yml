@@ -1,4 +1,5 @@
-# Runs the test suite on Linux, Windows and macOS under every supported Python.
+# Runs the test suite on Linux, Windows and macOS under every supported Python, once more with pytest alone, and
+# builds the wheel and runs it from outside the repository.
 # It installs the test tools and nothing else; it publishes nothing and needs no secret.
 # Actions are pinned to commits and the test tools to versions, so a run tests this repository and
 # not whatever an action's tag or a tool's latest release points at that day.
@@ -14,6 +15,7 @@ permissions:
 
 jobs:
   suite:
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -22,6 +24,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1 (Node 24)
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97   # v7.0.0 (Node 24)
         with:
           python-version: ${{ matrix.python }}
@@ -31,3 +35,45 @@ jobs:
       # annotation on a public repository to anyone, so a failure can be read without an account.
       - if: failure()
         run: python -c "import re, xml.etree.ElementTree as E; [print('::error title=' + c.get('classname', '') + '::' + c.get('name', '') + ' ' + ' '.join(re.sub(r'(#x1B|\x1b)\[[0-9;]*m', '', f.get('message') or '').split())[:400]) for c in E.parse('pytest-results.xml').iter('testcase') for f in list(c.iter('failure')) + list(c.iter('error'))]"
+
+  # The README's first count is for a clean clone with pytest alone: the optional tests must skip, not fail.
+  pytest-only:
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.14"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1 (Node 24)
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97   # v7.0.0 (Node 24)
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install pytest==9.1.1
+      - run: python -m pytest -q -rfE
+
+  # The package a user installs, run from outside the repository, so the checkout's own files cannot stand in for it.
+  wheel:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1 (Node 24)
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97   # v7.0.0 (Node 24)
+        with:
+          python-version: "3.14"
+      # pip builds the wheel from the checkout and installs it into a fresh environment
+      - run: python -m venv "$RUNNER_TEMP/venv" && "$RUNNER_TEMP/venv/bin/python" -m pip install "$GITHUB_WORKSPACE"
+      - name: every command from the installed wheel, and the README example's digest
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -e
+          for m in attestation cbom csaf cyclonedx key_provenance no_egress_auditor sarif sbom timestamp verify vex; do
+            "$RUNNER_TEMP/venv/bin/python" -m entrovouch.$m --version
+          done
+          "$RUNNER_TEMP/venv/bin/python" -m entrovouch.no_egress_auditor "$GITHUB_WORKSPACE/examples/sample_service" \
+            --label entrovouch/examples/sample_service --json report.json || test $? -eq 1
+          "$RUNNER_TEMP/venv/bin/python" -c "import json, re, sys; d = json.load(open('report.json')); t = open(sys.argv[1], encoding='utf-8').read(); assert d['findings_digest'] in t, 'digest not in examples/README.md'; print('digest matches', d['findings_digest'])" "$GITHUB_WORKSPACE/examples/README.md"

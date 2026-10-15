@@ -54,7 +54,7 @@ from ._version import __version__
 from .no_egress_auditor import (
     _sign, SKIP_DIRS, canonical_body, verify_report,
     _file_digest, _tree_digest, tree_listing_digest, reproducible_body, _subject_name, _rel, _read_python_source,
-    markdown_cell, markdown_code, python_units, NotPythonNotebook,
+    markdown_cell, markdown_code, python_units, NotPythonNotebook, PythonNotDecodable,
 )
 from .manifests import tree_files
 from .signer import ALGORITHM, UNSIGNED, MerkleSigner, SignerError
@@ -1023,6 +1023,11 @@ def _build_cbom(target: Path | str,
             # a notebook that is not JSON, or one for another language's kernel: its cryptography was not inventoried
             scanned += 1
             tree.append((rel, _file_digest(p)))
+            if isinstance(exc, PythonNotDecodable):
+                not_parsed.append({"file": rel, "line": 0,
+                                   "detail": f"could not decode this file as Python decodes it ({exc.args[0]}), so its "
+                                             "cryptography was NOT inventoried"})
+                continue
             why = exc.args[0] if isinstance(exc, NotPythonNotebook) else \
                 "not JSON, or not a notebook layout this tool reads"
             not_parsed.append({"file": rel, "line": 0,
@@ -1191,7 +1196,8 @@ def render_markdown(rep: CBOM) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="ENTROVOUCH CBOM (Cryptographic Bill of Materials) generator")
+    ap = argparse.ArgumentParser(prog="python -m entrovouch.cbom", description="ENTROVOUCH CBOM (Cryptographic Bill of Materials) generator")
+    ap.add_argument("--version", action="version", version=f"entrovouch {__version__}")
     ap.add_argument("target", type=Path, help="directory to inventory")
     ap.add_argument("--json", type=Path, default=None, help="write signed JSON CBOM")
     ap.add_argument("--md", type=Path, default=None, help="write markdown CBOM")

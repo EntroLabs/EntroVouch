@@ -151,6 +151,16 @@ RULES: dict[str, dict[str, str]] = {
             "separately so a reader can tell the two apart."
         ),
     },
+    "peripheral-link": {
+        "name": "RadioOrPeripheralLink",
+        "short": "A radio or peripheral-link library is imported",
+        "full": (
+            "The file imports a library whose purpose is a link off the machine that is not the "
+            "IP network: Bluetooth, a serial line, USB, a CAN bus, a Zigbee or mesh radio. Data can "
+            "leave the device over it. Reported separately from network egress, for a person to "
+            "review what the device at the other end receives."
+        ),
+    },
     "external-url": {
         "name": "ExternalUrlInCode",
         "short": "A URL in script source",
@@ -392,8 +402,9 @@ def to_sarif(report_dict: dict, level: str = "warning") -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(
+    ap = argparse.ArgumentParser(prog="python -m entrovouch.sarif",
         description="Convert an ENTROVOUCH audit report (JSON) to SARIF 2.1.0.")
+    ap.add_argument("--version", action="version", version=f"entrovouch {__version__}")
     ap.add_argument("report", type=Path, help="audit report .json")
     ap.add_argument("--out", type=Path, default=None, help="write here (else stdout)")
     ap.add_argument("--level", default="warning", choices=_LEVELS,
@@ -402,7 +413,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if getattr(args, 'out', None) is not None:
         clash = missing_folder(args.out, inputs=(args.report,))
-        if clash and 'reads' in clash:
+        if clash and ("reads" in clash or "is a folder" in clash):   # a missing folder is named when written
             print(clash, file=sys.stderr)       # a report converted onto itself would be destroyed
             return 2
 

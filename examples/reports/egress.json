@@ -1,8 +1,8 @@
 {
   "tool": "ENTROVOUCH no-egress auditor",
-  "tool_version": "1.1.1",
+  "tool_version": "1.1.3",
   "target": "entrovouch/examples/sample_service",
-  "scanned_at_utc": "2026-10-09T21:24:50.685280+00:00",
+  "scanned_at_utc": "2026-10-15T08:01:19.258088+00:00",
   "files_scanned": 7,
   "files_not_read": 1,
   "verdict": "FINDINGS",
@@ -26,12 +26,12 @@
       "detail": "declared dependency 'stripe' names a known network package - not a call site; the tree depends on it"
     }
   ],
-  "scope_statement": "Static analysis of Python (including notebooks, .pth files and shebang scripts), JavaScript, TypeScript, markup, stylesheets, shell, PowerShell and batch scripts, Dockerfiles, Makefiles, pipeline definitions and dependency manifests. It reports network-capable imports, calls that connect or listen, process spawns that reach a network binary, shell strings, dynamic code loading, native calls, external references, network commands in scripts, and declared network dependencies and remote sources. It does NOT prove zero egress: this is a Turing-complete language and the analysis underapproximates. Detection is BLOCKLIST-BASED, so it is complete only against names it knows: a renamed, vendored or dynamically-constructed module or argv entry is invisible. Measured against network libraries chosen without reference to the list, recall is 0%, so a PLAIN, unobfuscated `import X` of a library this tool does not name produces no finding, exactly like an obfuscated one. Check FORBIDDEN_IMPORT_MODULES against your own dependencies before reading anything into a CLEAN verdict. Every third-party module the Python in the tree imports that is on none of this tool's lists is named in `unlisted_imports` (for JavaScript and TypeScript packages, `unlisted_js_imports`): the verdict covers the names the tool knows, and that field lists the ones it does not. Files that fail to parse are reported as `unparseable-source` and were NOT analysed. Directories skipped by name, files of types this tool has no reader for (configuration data, other languages, lockfiles) and symbolic links are listed under `not_scanned` and counted in `files_not_read`; a tree in which nothing was read is NOT-ANALYSED rather than CLEAN. An import is NOT counted as a network import when the tree itself supplies a top-level module of that name, because that module shadows any installed package; every such name is listed in `shadowed_imports`, so a network client VENDORED into the tree root appears there rather than disappearing. Declared dependencies (pyproject.toml, requirement files, setup.cfg, setup.py, Pipfile, conda environment files, package.json) that name a known network package are reported as `declared-network-dependency`: evidence the tree depends on that package, not a claim that a call site reaches the network. An argument is resolved when the source spells it out or binds it once to a literal; anything built at run time (f-strings, concatenation, lists assembled in code) is not, except a file path whose UNC root is written in the file. The subject digest folds CRLF line endings to LF in text files, and file order is by path bytes, so the same tree gives the same report on every operating system and wherever it sits on disk. This report is DETECTION-grade evidence and does not support an unqualified claim of absence.",
+  "scope_statement": "Static analysis of Python (including notebooks, .pth files and shebang scripts), JavaScript, TypeScript, markup, stylesheets, shell, PowerShell and batch scripts, Dockerfiles, Makefiles, pipeline definitions and dependency manifests. It reports network-capable imports, calls that connect or listen, process spawns that reach a network binary, shell strings, dynamic code loading, native calls, external references, network commands in scripts, and declared network dependencies and remote sources. A Python import of a radio or peripheral-link library (Bluetooth, serial, USB, CAN, Zigbee, mesh radio) is reported as `peripheral-link`, for review: a link off the device that is not the IP network. It does NOT prove zero egress: this is a Turing-complete language and the analysis underapproximates. Detection is BLOCKLIST-BASED, so it is complete only against names it knows: a renamed, vendored or dynamically-constructed module or argv entry is invisible. Measured against network libraries chosen without reference to the list, recall is 0%, so a PLAIN, unobfuscated `import X` of a library this tool does not name produces no finding, exactly like an obfuscated one. Check FORBIDDEN_IMPORT_MODULES against your own dependencies before reading anything into a CLEAN verdict. Every third-party module the Python in the tree imports that is on none of this tool's lists is named in `unlisted_imports` (for JavaScript and TypeScript packages, `unlisted_js_imports`): the verdict covers the names the tool knows, and that field lists the ones it does not. Files that fail to parse are reported as `unparseable-source` and were NOT analysed. Directories skipped by name, files of types this tool has no reader for (configuration data, other languages, lockfiles) and symbolic links are listed under `not_scanned` and counted in `files_not_read`; a tree in which nothing was read is NOT-ANALYSED rather than CLEAN. An import is NOT counted as a network import when the tree itself supplies a top-level module of that name, because that module shadows any installed package; every such name is listed in `shadowed_imports`, so a network client VENDORED into the tree root appears there rather than disappearing. Declared dependencies (pyproject.toml, requirement files, setup.cfg, setup.py, Pipfile, conda environment files, package.json) that name a known network package are reported as `declared-network-dependency`: evidence the tree depends on that package, not a claim that a call site reaches the network. An argument is resolved when the source spells it out or binds it once to a literal; anything built at run time (f-strings, concatenation, lists assembled in code) is not, except a file path whose UNC root is written in the file. The subject digest folds CRLF line endings to LF in text files, and file order is by path bytes, so the same tree gives the same report on every operating system and wherever it sits on disk. This report is DETECTION-grade evidence and does not support an unqualified claim of absence.",
   "subject": [
     {
       "name": "entrovouch/examples/sample_service",
       "digest": {
-        "sha3-256": "a19a74eacd9be59d4545aec928772b5e6a745c65f029969df244700c84fdc269"
+        "sha3-256": "0b1c519d12ce52b1801691b769d9eb3dbeda3f1d5c88d47da5b9174f9c113b2f"
       }
     }
   ],
@@ -51,9 +51,9 @@
     },
     "symbolic_links": 0
   },
-  "subject_digest": "a19a74eacd9be59d4545aec928772b5e6a745c65f029969df244700c84fdc269",
-  "findings_digest": "57a8ec283551cc9d45d8281cc738ca65d0558625f0a9d87c119145337dc3cd62",
-  "content_hash": "5a80e417e0930a42cc4049909053369a7af48d8f8eacd6610f2cf91446144415",
+  "subject_digest": "0b1c519d12ce52b1801691b769d9eb3dbeda3f1d5c88d47da5b9174f9c113b2f",
+  "findings_digest": "c55dd0c95357cc5cf213bac89ca29608df733e8655bd20ed06b3ceb5e6592535",
+  "content_hash": "610f5184af7368f6d2c158b3cfeabd48346e6be5d6107d711ccc03721ec987f1",
   "integrity_tag": "",
   "signature_algorithm": "UNSIGNED - content hash only, origin NOT attested",
   "signature": null,

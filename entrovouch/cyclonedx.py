@@ -178,8 +178,9 @@ def to_cyclonedx(cbom_dict: dict, serial_number: str | None = None) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(
+    ap = argparse.ArgumentParser(prog="python -m entrovouch.cyclonedx",
         description="Convert an ENTROVOUCH CBOM (JSON) to CycloneDX 1.6.")
+    ap.add_argument("--version", action="version", version=f"entrovouch {__version__}")
     ap.add_argument("cbom", type=Path, help="CBOM .json")
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--serial", default=None,

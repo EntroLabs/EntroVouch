@@ -41,11 +41,11 @@ from pathlib import Path
 from ._cli import missing_folder, run, write_text
 from .manifests import tree_files
 from . import _reads
-from ._parse import load_json, parse_python
+from ._parse import MAX_JSON_DEPTH, load_json, parse_python
 from .no_egress_auditor import (
     _DISPLAY_CELL_MAGICS, _PROGRAM_CELL_MAGICS,
     _read_python_source, _subject_name, canonical_body, tree_listing_digest, markdown_cell, markdown_code, python_units,
-    NotPythonNotebook,
+    NotPythonNotebook, PythonNotDecodable,
 )
 from ._version import __version__
 from ._pem import armour_with_key
@@ -541,7 +541,7 @@ class KeyProvenanceReport:
         "from source. NOTHING-FOUND means nothing came to this tool's attention in the "
         "files it read, and what it did not read (skipped directories, files over 16 MiB, what compressed "
         "archives hold, symbolic links) is "
-        "listed in not_scanned; a Python file that would not parse is "
+        "listed in not_scanned; a Python file that would not parse, or JSON nested too deeply to read, is "
         "listed in files_not_parsed and makes the "
         "verdict REVIEW; NOT-ANALYSED means no file was read, or only archives this tool could not open."
     )
@@ -810,12 +810,9 @@ def _scan_python(path: Path, rel: str, not_parsed: list | None = None, source: s
         if source is not None:
             src = source
         else:
-            try:
-                src = _read_python_source(path)
-            except (SyntaxError, LookupError, UnicodeDecodeError):
-                src = _reads.read_text(path)
+            src = _read_python_source(path)
         tree = _parse_quietly(src, str(path))
-    except (SyntaxError, ValueError, RecursionError, MemoryError, OSError) as exc:
+    except (SyntaxError, ValueError, LookupError, RecursionError, MemoryError, OSError) as exc:
         # A file that will not parse was not scanned for keys; it is listed, never counted as holding none.
         if not_parsed is not None:
             where = (f"cell {cell} of this notebook" if _reads.suffix_of(path).lower() == ".ipynb"
@@ -1456,8 +1453,13 @@ def _scan_key_files(p: Path, rel: str, read: list | None = None, unread: dict | 
     if suffix in (".json", ".jwk", ".jwks"):
         try:
             data = load_json(text)
-        except (ValueError, RecursionError):
-            data = None                 # not JSON, or nested deeper than the parser goes: its text was searched above
+        except RecursionError:
+            # nested deeper than the parser goes: its values were not read, so the file is listed as not parsed
+            data = None
+            if unread is not None:
+                unread.setdefault("json_too_deep", []).append(rel)
+        except ValueError:
+            data = None                 # not JSON
         if isinstance(data, dict) and {"seed", "height", "next_index"} <= set(data):
             out.append(KeyFinding(rel, 1, "key-file-in-tree",
                                   "an ENTROVOUCH signing-key file (seed, height, next_index) is in the tree"))
@@ -1524,6 +1526,11 @@ def _scan_key_provenance(target: Path, label: str | None = None) -> KeyProvenanc
             units = python_units(p)
         except ValueError as exc:
             scanned += 1
+            if isinstance(exc, PythonNotDecodable):
+                not_parsed.append({"file": rel, "line": 0,
+                                   "detail": f"could not decode this file as Python decodes it ({exc.args[0]}), so it "
+                                             "was NOT scanned for key material"})
+                continue
             if isinstance(exc, NotPythonNotebook):
                 # its code is not Python; its text (cells, outputs, metadata) is still searched for key armour
                 not_parsed.append({"file": rel, "line": 0,
@@ -1564,6 +1571,10 @@ def _scan_key_provenance(target: Path, label: str | None = None) -> KeyProvenanc
         # a file the run could not open (permissions, a lock held by another program): never a clean result
         not_parsed.append({"file": rel, "line": 0,
                            "detail": f"could not be opened ({why}), so it was NOT scanned for key material"})
+    for rel in sorted(set(unread.get("json_too_deep", []))):
+        not_parsed.append({"file": rel, "line": 0,
+                           "detail": f"JSON nested deeper than {MAX_JSON_DEPTH} levels, so its values were NOT scanned "
+                                     "for key material"})
     rep.tree_listing_digest = tree_listing_digest(walk.files)
     rep.not_scanned = {"skipped_directories": dict(sorted(walk.skipped.items())),
                        "too_large": sorted(unread.get("too_large", [])),
@@ -1617,7 +1628,7 @@ def render_markdown(rep: KeyProvenanceReport) -> str:
              f"- **Files scanned:** {rep.files_scanned} (Python in every form the auditor reads, and every other "
              f"text file)",
              f"- **Findings:** {len(rep.findings)}",
-             *([f"- **Python files NOT parsed:** {len(rep.files_not_parsed)} (not scanned for key material)"]
+             *([f"- **Files NOT parsed:** {len(rep.files_not_parsed)} (not scanned for key material)"]
                if rep.files_not_parsed else []),
              *_not_read_lines(rep.not_scanned or {}),
              "",
@@ -1644,7 +1655,8 @@ def render_markdown(rep: KeyProvenanceReport) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     import argparse, sys, json
-    ap = argparse.ArgumentParser(description="ENTROVOUCH key-provenance detector")
+    ap = argparse.ArgumentParser(prog="python -m entrovouch.key_provenance", description="ENTROVOUCH key-provenance detector")
+    ap.add_argument("--version", action="version", version=f"entrovouch {__version__}")
     ap.add_argument("target", type=Path)
     ap.add_argument("--json", type=Path, default=None, help="write the JSON report")
     ap.add_argument("--md", type=Path, default=None, help="write the markdown report")

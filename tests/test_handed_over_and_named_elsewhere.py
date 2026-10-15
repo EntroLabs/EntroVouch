@@ -420,13 +420,22 @@ def test_one_declaration_read_twice_is_one_component(tmp_path):
 
 
 @pytest.mark.skipif(os.name != "nt", reason="a name ending in a dot is shortened only by Windows")
-def test_a_windows_name_ending_in_a_dot_is_read_or_listed(tmp_path):
+def test_a_windows_name_ending_in_a_dot_or_a_space_is_read(tmp_path):
+    """A folder named `pkg.` or `sp ` is read on Windows, as on every other system: Windows cannot open it by an
+    ordinary path, so it is walked by its extended-length path. Skipping it would let code there pass unread."""
     base = "\\\\?\\" + str(tmp_path)
     with open(base + "\\run.", "w") as f:
         f.write("#!/usr/bin/env python3\nimport requests\n")
-    os.mkdir(base + "\\pkg.")
+    for folder in ("pkg.", "pkg.\\sub.", "sp "):
+        os.mkdir(base + "\\" + folder)
     with open(base + "\\pkg.\\m.py", "w") as f:
         f.write("import socket\n")
+    with open(base + "\\pkg.\\sub.\\deep.py", "w") as f:
+        f.write("import socket\n")
+    with open(base + "\\sp \\n.py", "w") as f:
+        f.write("import socket\n")
     r = asdict(audit(tmp_path, label="t"))
-    assert [(f["file"], f["kind"]) for f in r["findings"]] == [("run.", "network-import")]
-    assert r["not_scanned"]["skipped_directories"] == {"pkg./": 1}
+    assert sorted((f["file"], f["kind"]) for f in r["findings"]) == [
+        ("pkg./m.py", "network-import"), ("pkg./sub./deep.py", "network-import"), ("run.", "network-import"),
+        ("sp /n.py", "network-import")]
+    assert r["not_scanned"]["skipped_directories"] == {}

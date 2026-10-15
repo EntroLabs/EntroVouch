@@ -1,0 +1,6 @@
+# A source distribution carries what the test suite and the examples need, so it can be checked offline.
+include README.md CHANGELOG.md CONFORMANCE.md PRECISION_CORPUS.md SECURITY.md CONTRIBUTING.md LICENSE
+graft docs
+graft examples
+graft tests
+global-exclude __pycache__ *.py[cod]

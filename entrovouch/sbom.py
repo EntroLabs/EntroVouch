@@ -42,12 +42,13 @@ import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 from . import _reads
 from ._cli import missing_folder, run, uuid_urn, write_text
 from ._version import __version__
 from .manifests import (
-    DeclaredDep, _requirement_remote, collect_manifests, pep503_name,
+    DeclaredDep, _requirement_remote, collect_manifests, tree_files,
     pinned_npm_version, pinned_pypi_version,
 )
 from .no_egress_auditor import (
@@ -146,9 +147,13 @@ def _purl(dep: DeclaredDep, version: str) -> str:
         else:
             base = f"pkg:npm/{name.lower()}"
         return f"{base}@{_purl_version(version)}" if version else base
-    n = pep503_name(dep.name)
     if dep.ecosystem == "conda":
-        return f"pkg:conda/{n}@{_purl_version(version)}" if version else f"pkg:conda/{n}"
+        # conda names are lowercase and keep `.` and `_` (`ruamel.yaml`, `typing_extensions`); a channel written as
+        # `conda-forge::numpy` is kept as the `channel` qualifier, so the URL does not point at the default channel
+        n = dep.name.strip().lower()
+        base = f"pkg:conda/{n}@{_purl_version(version)}" if version else f"pkg:conda/{n}"
+        head = dep.spec.split("::", 1)[0].strip() if "::" in dep.spec else ""
+        return f"{base}?channel={quote(head, safe='')}" if head else base
     # the package-url rule for PyPI: lowercased, `_` written as `-` (a `.` stays: `pkg:pypi/zope.interface`)
     base = f"pkg:pypi/{dep.name.strip().lower().replace('_', '-')}"
     return f"{base}@{_purl_version(pep440_normal(version))}" if version else base
@@ -245,6 +250,18 @@ def build_sbom(target: Path | str,
         return _build_sbom(target, signer, label)
 
 
+# Manifests of ecosystems this tool does not read. A tree that declares dependencies only in these is not EMPTY: the
+# inventory does not cover them, and the report says so.
+_UNREAD_MANIFESTS = {"go.mod", "cargo.toml", "gemfile", "composer.json", "pom.xml", "build.gradle", "build.gradle.kts",
+                     "packages.config", "package.swift", "mix.exs", "pubspec.yaml", "deno.json", "deno.jsonc",
+                     "directory.packages.props"}
+
+
+def _unread_manifests(target: Path) -> list[str]:
+    return [rel for rel, _ in tree_files(target).files
+            if rel.rpartition("/")[2].lower() in _UNREAD_MANIFESTS or rel.lower().endswith((".csproj", ".fsproj"))]
+
+
 def _build_sbom(target: Path | str,
                 signer: "MerkleSigner | None" = None,
                 label: str | None = None) -> SBOM:
@@ -285,6 +302,10 @@ def _build_sbom(target: Path | str,
         components=[asdict(c) for c in comps],
         unknown_fields=unknowns,
     )
+    unread = _unread_manifests(target)
+    if unread:
+        rep.unknown_fields.append("manifests of ecosystems this tool does not read: " + ", ".join(unread))
+        rep.verdict = "INCOMPLETE"
     if errors:
         # Parse failures are coverage gaps. Recorded, not silent.
         rep.unknown_fields.append(
@@ -450,8 +471,9 @@ def render_markdown(rep: SBOM) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(
+    ap = argparse.ArgumentParser(prog="python -m entrovouch.sbom",
         description="ENTROVOUCH SBOM: CycloneDX 1.6 from declared manifests")
+    ap.add_argument("--version", action="version", version=f"entrovouch {__version__}")
     ap.add_argument("target", type=Path, help="directory to inventory")
     ap.add_argument("--json", type=Path, default=None, help="write ENTROVOUCH JSON")
     ap.add_argument("--md", type=Path, default=None, help="write markdown")

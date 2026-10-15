@@ -209,14 +209,109 @@ def _is_timestamp_request(token: bytes) -> bool:
     return bool(imprint) and imprint[0][0] == 0x30
 
 
+_NO_TST = object()
+
+
+_OID_SIGNED_DATA = (1, 2, 840, 113549, 1, 7, 2)
+_OID_TST_INFO = (1, 2, 840, 113549, 1, 9, 16, 1, 4)
+
+
+def _signed_tst_fields(token: bytes):
+    """The fields of the TSTInfo the token's signature covers, as (tag, start, end), or None when the token has no
+    such structure: TimeStampResp (or a bare TimeStampToken, as `openssl ts -reply -token_out` writes it),
+    timeStampToken (signedData), [0], SignedData, encapContentInfo of type id-ct-TSTInfo, [0], OCTET STRING, TSTInfo
+    (RFC 3161 section 2.4.2, RFC 5652 section 5)."""
+    def kids(start, end):
+        return _der_children(token, start, end) or []
+
+    top = kids(0, len(token))
+    if len(top) != 1 or top[0][0] != 0x30:
+        return None
+    resp = kids(top[0][1], top[0][2])
+    if len(resp) == 2 and resp[0][0] == 0x06 and resp[1][0] == 0xA0:
+        info = resp                                         # a bare TimeStampToken: the ContentInfo itself
+    elif len(resp) < 2 or resp[1][0] != 0x30:
+        return None
+    else:
+        info = kids(resp[1][1], resp[1][2])                 # a TimeStampResp: status, then the ContentInfo
+    if len(info) != 2 or token[info[0][1] - 2:info[0][2]] != _der_oid(_OID_SIGNED_DATA) or info[1][0] != 0xA0:
+        return None
+    sd = kids(info[1][1], info[1][2])
+    if len(sd) != 1 or sd[0][0] != 0x30:
+        return None
+    fields = kids(sd[0][1], sd[0][2])                       # version, digestAlgorithms, encapContentInfo, ...
+    if len(fields) < 3 or fields[0][0] != 0x02 or fields[1][0] != 0x31 or fields[2][0] != 0x30:
+        return None
+    encap = kids(fields[2][1], fields[2][2])
+    if len(encap) != 2 or token[encap[0][1] - 2:encap[0][2]] != _der_oid(_OID_TST_INFO) or encap[1][0] != 0xA0:
+        return None
+    octet = kids(encap[1][1], encap[1][2])
+    if len(octet) != 1 or octet[0][0] != 0x04:
+        return None
+    tst = kids(octet[0][1], octet[0][2])
+    if len(tst) != 1 or tst[0][0] != 0x30:
+        return None
+    return kids(tst[0][1], tst[0][2])
+
+
+def _is_bare_token(token: bytes) -> bool:
+    """The file is a TimeStampToken on its own (a ContentInfo), not a TimeStampResp around one."""
+    top = _der_children(token, 0, len(token)) or []
+    inner = _der_children(token, top[0][1], top[0][2]) if len(top) == 1 and top[0][0] == 0x30 else None
+    return bool(inner) and len(inner) == 2 and inner[0][0] == 0x06 and inner[1][0] == 0xA0
+
+
+def _signed_imprint(token: bytes) -> bytes | None:
+    """The messageImprint digest of the TSTInfo the token's signature covers, or None when there is none."""
+    fields = _signed_tst_fields(token)
+    if not fields or len(fields) < 3 or fields[2][0] != 0x30:
+        return None
+    imprint = _der_children(token, fields[2][1], fields[2][2])
+    if not imprint or len(imprint) != 2 or imprint[1][0] != 0x04:
+        return None
+    return token[imprint[1][1]:imprint[1][2]]
+
+
+def _tst_nonce(token: bytes, digest: bytes):
+    """The nonce of the token's TSTInfo when its messageImprint holds `digest`: an int, None when it has no nonce,
+    or `_NO_TST` when the token carries no TSTInfo with this imprint.
+
+    Only the TSTInfo the signature covers counts, reached by the token's own structure (RFC 3161 section 2.4.2, RFC
+    5652 section 5): TimeStampResp, then timeStampToken (a ContentInfo of type signedData), then [0], SignedData,
+    encapContentInfo of type id-ct-TSTInfo, then [0], OCTET STRING, TSTInfo. A TSTInfo-shaped value anywhere else
+    (an unsigned attribute, a certificate) is not read: it is not covered by the signature."""
+    fields = _signed_tst_fields(token)
+    return _NO_TST if fields is None else _tst_fields(token, fields, digest)
+
+
+def _tst_fields(token: bytes, kids, digest: bytes):
+    """The nonce when `kids` are a TSTInfo's fields with this imprint (None when it has no nonce), else `_NO_TST`."""
+    if len(kids) < 5 or [k[0] for k in kids[:5]] != [0x02, 0x06, 0x30, 0x02, 0x18]:
+        return _NO_TST
+    imprint = _der_children(token, kids[2][1], kids[2][2])
+    if not imprint or len(imprint) != 2 or imprint[0][0] != 0x30 or imprint[1][0] != 0x04 \
+            or token[imprint[1][1]:imprint[1][2]] != digest:
+        return _NO_TST
+    rest = kids[5:]
+    if rest and rest[0][0] == 0x30:                  # accuracy
+        rest = rest[1:]
+    if rest and rest[0][0] == 0x01:                  # ordering
+        rest = rest[1:]
+    if rest and rest[0][0] == 0x02:
+        if rest[0][2] == rest[0][1]:
+            return _NO_TST                                   # an INTEGER with no content octets is not DER
+        return int.from_bytes(token[rest[0][1]:rest[0][2]], "big", signed=True)
+    return None
+
+
 def token_contains_digest(token: bytes, digest: bytes) -> bool:
     """Does this timestamp token carry `digest` as its message imprint?
 
     A DELIBERATELY SHALLOW CHECK, AND NAMING THE SHALLOWNESS IS THE POINT.
-    It searches the DER for the 32-byte imprint rather than parsing CMS to reach
-    the `messageImprint` field. That is sound for the question asked: the digest
-    of your report either appears in this token or it does not: and it is not a
-    signature check.
+    A token shaped as RFC 3161 gives it is judged by the `messageImprint` of the
+    TSTInfo its signature covers, so this digest written anywhere else in it does
+    not count. Any other structure is judged by whether it holds the 32-byte
+    digest. Either way it is not a signature check.
 
     What it catches: a token from a different report, a truncated token, a token
     pasted from the wrong file, the request file given in place of the response.
@@ -226,7 +321,13 @@ def token_contains_digest(token: bytes, digest: bytes) -> bool:
     """
     if len(digest) != 32:
         raise ValueError("expected a 32-byte SHA-256 digest")
-    return _is_der_sequence(token) and not _is_timestamp_request(token) and digest in token
+    if not _is_der_sequence(token) or _is_timestamp_request(token):
+        return False
+    signed = _signed_imprint(token)
+    if signed is not None:
+        # a token with a TSTInfo is judged by that TSTInfo's imprint: this digest elsewhere in it does not count
+        return signed == digest
+    return digest in token
 
 
 def report_digest(report_path: Path) -> bytes:
@@ -269,7 +370,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if getattr(args, 'out', None) is not None:
         clash = missing_folder(args.out, inputs=(args.report, getattr(args, 'token', None)))
-        if clash and 'reads' in clash:
+        if clash and ("reads" in clash or "is a folder" in clash):   # a missing folder is named when written
             print(clash, file=sys.stderr)       # a report converted onto itself would be destroyed
             return 2
     if not args.report.is_file():
@@ -344,9 +445,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"token            : {args.token} ({len(token)} bytes)")
     print(f"imprint present  : {'YES' if ok else 'NO'}")
     if args.nonce is not None:
-        # in a timestamp the nonce comes after the message imprint, never before it
-        at = token.find(digest)
-        nonce_ok = at >= 0 and token.find(_der_int(args.nonce), at + len(digest)) >= 0
+        # the nonce field of the TSTInfo that carries this report's imprint, and no other INTEGER in the token
+        nonce_ok = _tst_nonce(token, digest) == args.nonce
         print(f"nonce echoed     : {'YES' if nonce_ok else 'NO'}")
         if not nonce_ok:
             print()
@@ -355,13 +455,18 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     print()
     if ok:
-        print("The token carries this report's digest. That is an IMPRINT match,")
-        print("not a signature verification: this tool does not validate the TSA's")
+        if _signed_imprint(token) is not None:
+            print("The token's TSTInfo carries this report's digest. That is an IMPRINT match,")
+        else:
+            print("The token holds this report's digest, but it is neither an RFC 3161 response nor a timestamp")
+            print("token, so no TSTInfo was found to read it from. That is containment, not an IMPRINT match,")
+        print("and not a signature verification: this tool does not validate the TSA's")
         print("certificate chain, and says so rather than implying it did.")
         if args.nonce is None:
             print("The nonce was not checked: pass --nonce with the value `request` printed.")
         print("For the other half:")
-        print(f"  openssl ts -verify -in {args.token} -data {args.report} -CAfile <tsa-ca.pem>")
+        given = "-token_in -in" if _is_bare_token(token) else "-in"
+        print(f"  openssl ts -verify {given} {args.token} -data {args.report} -CAfile <tsa-ca.pem>")
         return 0
     if not _is_der_sequence(token):
         print("This file is not a timestamp response (not one DER structure of its own length). It may be")

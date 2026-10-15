@@ -1,0 +1,7 @@
+# The tools have no runtime dependencies. This keeps the commit-pinned actions in the test workflow current.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

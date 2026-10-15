@@ -28,7 +28,8 @@ cd EntroVouch
 python -m entrovouch.no_egress_auditor examples/sample_service --label entrovouch/examples/sample_service
 ```
 
-Compare the `findings_digest` it prints with the table in [examples/README.md](examples/README.md).
+Compare the `findings_digest` it prints with the table in [examples/README.md](examples/README.md). To install
+the tools instead, without the examples: `python -m pip install "entrovouch @ git+https://github.com/EntroLabs/EntroVouch@v1.1.3"`.
 
 The label names what was audited and is covered by the digest: pass ours to reproduce our value, and your own
 (`org/repo@commit`) for your own code.
@@ -36,14 +37,17 @@ The label names what was audited and is covered by the digest: pass ours to repr
 The tools need Python 3.11 or later and nothing else. The test suite needs `pytest`:
 
 ```bash
-python -m pytest -q      # 3207 tests, pytest only, exit 0
+python -m pytest -q      # 3326 tests, pytest only, exit 0
 ```
 
 Some tests skip where the machine lacks something, such as `jsonschema`. 27 more need the optional extras:
-run `pip install -e .[test]`, then re-run for 3234. A test asserts both counts.
+run `pip install -e ".[test]"`, then re-run for 3353. A test asserts both counts.
 
 The shipped package, `entrovouch/`, audits `CLEAN`. The demo tree, the test programs and the test workflow produce
-findings on purpose, and `cbom` and `key_provenance` report the package's own search strings. The auditor has no
+findings on purpose, and `cbom` and `key_provenance` report the package's own search strings (`cbom` gives
+`BROKEN-CRYPTO` on `entrovouch/`, from strings such as `TripleDES`). `cbom` leaves its keyword sweep out of one file
+only, its own source, recognised by matching the running `cbom.py` apart from line endings (the syntax-tree pass
+still runs on it), and says so in the report (`self_scan_suppressed`). The auditor has no
 rule that skips this repository's folders.
 
 ## Use
@@ -60,7 +64,8 @@ Each scanner takes a directory, prints a markdown report, writes JSON with `--js
 takes `--label`.
 
 - `no_egress_auditor` reports imports, calls, commands and declared dependencies that can reach the network, in
-  Python, JavaScript, scripts, Dockerfiles, Makefiles, CI pipelines, web pages and package manifests.
+  Python, JavaScript, scripts, Dockerfiles, Makefiles, CI pipelines, web pages and package manifests. It reports Python imports
+  of radio and peripheral-link libraries separately, as `peripheral-link`.
 - `cbom` lists the cryptography the Python code uses, by library, call and algorithm name, and marks what a quantum
   computer would break. `REVIEW-NEEDED` means something it found needs a person to classify it.
 - `key_provenance` looks for key material and credentials written into the tree, in code, key files, `.env` and
@@ -100,8 +105,8 @@ audit(Path("/path/to/project"), label="org/repo@commit").findings_digest
 
 | Field | Reproduces? | What it answers |
 |---|---|---|
-| `findings_digest` | yes, across runs, processes and machines (see the Windows exception in REPRODUCING) | *Does this tool, on this tree, still say this?* |
-| `subject_digest` | yes, per tree and tool (same exception) | *Which tree was audited?* |
+| `findings_digest` | yes, across runs, processes and machines | *Does this tool, on this tree, still say this?* |
+| `subject_digest` | yes, per tree and tool | *Which tree was audited?* |
 | `content_hash` | no for egress, CBOM and SBOM; yes for `key_provenance` with the same label and tree | *Is this the exact artifact I was handed?* |
 
 Compare `findings_digest`; on the egress, CBOM and SBOM reports `content_hash` covers the time of issue and differs
@@ -140,6 +145,9 @@ tree in which nothing was read is `NOT-ANALYSED`, exit 2.
 - A declared dependency is not a call site: `stripe` in `pyproject.toml` is reported as
   `declared-network-dependency`.
 - A server is `inbound-listener`, never egress.
+- A Python import of a radio or peripheral-link library in `PERIPHERAL_LINK_MODULES` (Bluetooth, a serial line, USB,
+  a CAN bus, a Zigbee or mesh radio) is `peripheral-link`: data can leave the device over that link, so it is a
+  finding, and it is not network egress. A person should review what reaches the device at the other end.
 - A report describes the tree at one commit.
 - `REVIEW` means review: a person reads the finding before anything passes.
 
@@ -167,7 +175,8 @@ set is in [PRECISION_CORPUS.md](PRECISION_CORPUS.md).
 | `key_provenance` | 50 | 21 | 3 | 16 | 85.7% (9.5%) |
 
 The first figure counts either-way findings as right; the figure in brackets counts them as wrong. `sbom` reads
-declared dependencies and has no precision figure.
+declared dependencies and has no precision figure. None of the 885 is a `peripheral-link` finding, so that category
+has no measurement on sets no fix was made from; on sets 30 and 31, which shaped it, its 7 findings were all true.
 
 `key_provenance` is the weakest of the three measured. Its figure rests on 21 findings, so the 95% interval (Wilson)
 runs from 65.4% to 95.0%; 16 of the 21 were placeholder values in tests. Its precision varies a lot between trees and
@@ -203,12 +212,16 @@ We wrote all of these programs and forms, so code written by someone else may do
 
 ## Signing
 
-One signer ships: Lamport-Merkle over SHA3-256, resting on the preimage and collision resistance of SHA3-256 and on SHA3-256 behaving as a pseudorandom function when the secrets are derived from the seed. It claims conformance
+One signer signs reports: Lamport-Merkle over SHA3-256, resting on the preimage and collision resistance of SHA3-256 and on SHA3-256 behaving as a pseudorandom function when the secrets are derived from the seed. It claims conformance
 to no published standard and does not meet NIST SP 800-208, which requires stateful keys to live in a hardware
 module; this key is a file. Each leaf signs once, so keep one copy of the key that signs, and run
 `python -m entrovouch.no_egress_auditor --key PATH --advance-key N` before a restored copy signs again. With the root
 pinned, a signature shows who issued a report and that it is unchanged. It says nothing about whether the verdict is
 correct. The full rules are in [docs/SIGNING.md](docs/SIGNING.md).
+
+`entrovouch.lms` verifies RFC 8554 LMS and HSS signatures, makes LMS signatures, and reproduces the RFC's published
+test vectors. It does not sign reports, and it is not validated under SP 800-208; what backs it is in
+[CONFORMANCE.md](CONFORMANCE.md).
 
 ### The publisher's public root
 

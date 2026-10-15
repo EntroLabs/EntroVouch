@@ -37,11 +37,22 @@ def _expression_depth_exceeds(tree: ast.AST, limit: int) -> bool:
     return False
 
 
+# A syntax tree takes several hundred times its source in memory (measured: a 4 MB file, about 1.8 GB for the whole
+# audit), so a file whose source is larger than this is not parsed, on every machine, and is reported as such.
+MAX_PYTHON_SOURCE = 4 * 1024 * 1024
+
+
+class SourceTooLarge(NestingTooDeep):
+    """Python source longer than MAX_PYTHON_SOURCE characters; treated as a file that could not be parsed."""
+
+
 def parse_python(src: str, filename: str = "<unknown>") -> ast.AST:
     """`ast.parse` with the audited file's own compile-time warnings set aside, and the depth limit above.
 
     An invalid escape in someone else's string (`"\\d"`) is their warning, not this tool's output; under `-W error` it
     would turn a file that parses into one reported as unparseable."""
+    if len(src) > MAX_PYTHON_SOURCE:
+        raise SourceTooLarge(f"Python source over {MAX_PYTHON_SOURCE // (1024 * 1024)} MiB is not parsed")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         tree = ast.parse(src, filename=filename)
@@ -77,3 +88,21 @@ def load_json(text: str, **kwargs):
     if _json_depth_exceeds(text, MAX_JSON_DEPTH):
         raise NestingTooDeep(f"JSON nested deeper than {MAX_JSON_DEPTH} levels")
     return json.loads(text, **kwargs)
+
+
+# TOML too: `tomllib` recurses once per level of an array or inline table, so how deep a file it reads depends on the
+# version and on how deep the caller already is (nested arrays 400 levels deep are read from the top of the stack and
+# not from 300 frames down; inline tables fail near 330). Real manifests nest a handful of levels. One limit below all
+# of it; strings and comments are set aside first, so a bracket inside one is not counted.
+MAX_TOML_DEPTH = 100
+_TOML_SKIP = re.compile(r'"""(?:\\[\s\S]|[^\\"]|"(?!""))*"{3,5}|\'\'\'[\s\S]*?\'\'\'\'{0,2}|"(?:[^"\\\n]|\\.)*"'
+                        r"|'[^'\n]*'|#[^\n]*")
+
+
+def load_toml(text: str):
+    """`tomllib.loads` with one nesting limit on every Python version and every stack. Nesting past the limit raises
+    NestingTooDeep, which every caller already treats as a file it could not parse."""
+    import tomllib
+    if _json_depth_exceeds(_TOML_SKIP.sub('""', text), MAX_TOML_DEPTH):
+        raise NestingTooDeep(f"TOML nested deeper than {MAX_TOML_DEPTH} levels")
+    return tomllib.loads(text)

@@ -259,7 +259,9 @@ def test_deeply_nested_json_does_not_stop_a_run(tmp_path):
     _write(tmp_path, "package.json", "[" * 100000 + "]" * 100000)
     _write(tmp_path, "app.py", "x = 1\n")
     kp = key_provenance.scan_key_provenance(tmp_path, label="t")
-    assert kp.verdict == "REVIEW" and [f["file"] for f in kp.files_not_parsed] == ["n.ipynb"]
+    # the notebook, and both JSON files nested past the limit: none of their values were read
+    assert kp.verdict == "REVIEW" and [f["file"] for f in kp.files_not_parsed] == [
+        "n.ipynb", "n_structure_100000_opening_arrays.json", "package.json"]
     assert audit(tmp_path, label="t").verdict == "FINDINGS"          # the notebook is reported as not parsed
     assert cbom.build_cbom(tmp_path, label="t").verdict != "NOT-ANALYSED"
 

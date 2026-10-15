@@ -460,6 +460,24 @@ def test_json_has_one_nesting_limit_on_every_python(text, depth_ok):
             load_json(text)
 
 
+def test_key_provenance_lists_json_it_could_not_read_for_depth(tmp_path):
+    from entrovouch._parse import MAX_JSON_DEPTH
+    secret = '"secret_key": "hunter2hunter2hunter2"'
+    deep, shallow = tmp_path / "deep", tmp_path / "shallow"
+    _write(deep, "config.json", "{" + secret + ', "x": ' + "[" * (MAX_JSON_DEPTH + 50) + "]" * (MAX_JSON_DEPTH + 50) + "}")
+    _write(shallow, "config.json", "{" + secret + ', "x": [[[1]]]}')
+    rep = key_provenance.scan_key_provenance(deep, label="t")
+    assert rep.verdict == "REVIEW"                      # its values were not read: never NOTHING-FOUND
+    assert [d["file"] for d in rep.files_not_parsed] == ["config.json"]
+    assert str(MAX_JSON_DEPTH) in rep.files_not_parsed[0]["detail"]
+    near = key_provenance.scan_key_provenance(shallow, label="t")
+    assert near.files_not_parsed == []                  # an ordinary file is read, and its key still reported
+    assert [f["kind"] for f in near.findings] == ["literal-key"]
+    clean = tmp_path / "clean"
+    _write(clean, "settings.json", '{"name": "x", "x": [[[1]]]}')
+    assert key_provenance.scan_key_provenance(clean, label="t").files_not_parsed == []
+
+
 @pytest.mark.parametrize("name, wrap", [
     ("package.json", lambda deep: '{"name": "x", "dependencies": {"requests": "1.0"}, "x": ' + deep + "}"),
     ("n.ipynb", lambda deep: '{"cells": [{"cell_type": "code", "source": ["import requests"]}], "x": ' + deep + "}"),

@@ -2,20 +2,25 @@
 # re-run it yourself", and that claim needs a stated Python version to be honest.
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "entrovouch"
-version = "1.1.1"                 # keep in step with entrovouch/_version.py
-description = "No-egress and cryptographic-inventory auditors that sign their own findings."
+version = "1.1.3"                 # keep in step with entrovouch/_version.py
+description = "No-egress, cryptographic-inventory, key-provenance and SBOM tools whose reports are signed and reproduce."
 readme = "README.md"
 requires-python = ">=3.11"        # tomllib: pyproject.toml must read the same on every supported version
-license = { file = "LICENSE" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "EntroVerse" }]
 keywords = ["sbom", "cbom", "supply-chain", "audit", "sarif", "in-toto", "post-quantum"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Environment :: Console",
+    "Operating System :: OS Independent",
     "Topic :: Security",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -31,12 +36,16 @@ dependencies = []
 [project.optional-dependencies]
 # Test-only, and every one of these is optional at test time too: the property-based and
 # schema-validation suites call `pytest.importorskip`, so a reader who clones this repository
-# and runs `pytest` gets the full example-based suite with nothing else installed. `jsonschema` exists because a hand-rolled schema checker could be wrong in
-# the same direction as the generator it checks.
+# and runs `pytest` gets the full example-based suite with nothing else installed. `jsonschema` exists because
+# a hand-rolled schema checker could be wrong in the same direction as the generator it checks.
 test = ["pytest>=7", "hypothesis>=6", "jsonschema>=4.18"]
 
 [project.urls]
 Homepage = "https://github.com/EntroLabs/EntroVouch"
+Source = "https://github.com/EntroLabs/EntroVouch"
+Issues = "https://github.com/EntroLabs/EntroVouch/issues"
+Documentation = "https://github.com/EntroLabs/EntroVouch/tree/main/docs"
+Changelog = "https://github.com/EntroLabs/EntroVouch/blob/main/CHANGELOG.md"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

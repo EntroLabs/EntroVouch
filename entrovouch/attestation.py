@@ -49,6 +49,7 @@ from pathlib import Path
 
 from .no_egress_auditor import CBOM_TOOL, NO_EGRESS_TOOL, ReportError, load_report
 from ._cli import missing_folder, run, write_text
+from ._version import __version__
 
 __all__ = [
     "to_statement", "statement_subject", "STATEMENT_TYPE",
@@ -200,8 +201,9 @@ def verify_statement(statement: dict, expected_root: str | None = None) -> tuple
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(
+    ap = argparse.ArgumentParser(prog="python -m entrovouch.attestation",
         description="Wrap an ENTROVOUCH report as an in-toto Statement.")
+    ap.add_argument("--version", action="version", version=f"entrovouch {__version__}")
     ap.add_argument("report", type=Path, help="report .json")
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--cbom", action="store_true",
@@ -209,7 +211,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if getattr(args, 'out', None) is not None:
         clash = missing_folder(args.out, inputs=(args.report,))
-        if clash and 'reads' in clash:
+        if clash and ("reads" in clash or "is a folder" in clash):   # a missing folder is named when written
             print(clash, file=sys.stderr)       # a report converted onto itself would be destroyed
             return 2
 

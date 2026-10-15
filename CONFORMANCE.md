@@ -1,6 +1,6 @@
 # CONFORMANCE: what this project claims about the standards it names
 
-**Last verified 2026-10-09.** Regenerate when the answers change.
+**Last verified 2026-10-15.** Regenerate when the answers change.
 
 > **Naming a standard is a CHECKABLE claim.** A hostile reader can test it in an afternoon
 > using free published vectors, which makes it among the first things checked and the most
@@ -30,7 +30,7 @@ elliptic curves for cryptographic assets. This emitter writes `assetType: algori
 tool finds algorithms, not certificates or protocols.
 
 **A finding about the standard rather than about us:** CycloneDX 1.6 declares `specVersion` as
-a plain string with `"1.6"` only as an *example*: no `enum`, no `const`: so a document claiming
+a plain string with `"1.6"` only as an *example* (no `enum`, no `const`), so a document claiming
 `specVersion: "9.9"` validates cleanly against the 1.6 schema. **Schema validation does not
 establish which specification a document follows**, so the 1.6 claim above is asserted separately
 rather than resting on the validator.
@@ -124,6 +124,26 @@ restored key file can reuse a one-time leaf, and nothing in a signature reveals 
 <sub>Named in: `README.md`, `docs/SIGNING.md`, `entrovouch/signer.py`</sub>
 
 
+### RFC 8554 (LMS and HSS hash-based signatures)
+
+**VERIFIED AGAINST THE RFC'S PUBLISHED TEST VECTORS ONLY. NOT NIST SP 800-208 VALIDATED. IT DOES NOT SIGN REPORTS.**
+`entrovouch/lms.py` verifies LMS and HSS signatures for the SHA-256 parameter sets RFC 8554 defines (LM-OTS W1, W2,
+W4 and W8; LMS heights 5, 10, 15, 20 and 25) and signs with an LMS key derived from a seed as RFC 8554 Appendix A describes
+(heights 5 and 10). Both test cases of RFC 8554 Appendix F verify; test case 2 is reproduced byte for byte from the
+private keys the appendix gives, with its published randomizers; and a test fails if one byte of a published public
+key, message or signature changes. The vectors are in `tests/vectors/rfc8554_appendix_f.json`, transcribed from
+Appendix F. Test: `tests/test_lms_rfc8554.py`.
+
+SP 800-208 permits LMS signing only inside a hardware cryptographic module that keeps the state and never exports
+the key. This module keeps its state in a file: it writes the next unused leaf before a signature is computed and
+refuses a used leaf, and a state file that moved backwards while the key is loaded, but a copied or restored file can
+still bring a used leaf back. No CAVP or other validation has been run. The report signer is unchanged: reports are signed with the
+Lamport-Merkle construction above, which claims conformance to no standard, and nothing in the report format uses
+this module.
+
+<sub>Named in: `README.md`, `entrovouch/lms.py`, `docs/SIGNING.md`</sub>
+
+
 ### FIPS 203 / 204 / 205 (ML-KEM, ML-DSA, SLH-DSA)
 
 **DETECTOR TOKENS ONLY.** `cbom.py` recognises these names in *other people's* source so a
@@ -160,10 +180,11 @@ The artifact says so in its own metadata rather than implying a compliance nobod
 ### Package URL (purl)
 
 **FORM TESTED; THE SPECIFICATION'S OWN TEST SUITE IS NOT RUN.** `sbom` writes each component's identifier as a
-package URL (`pkg:pypi/...`, `pkg:npm/...`, `pkg:conda/...`), with the PyPI name normalised as the purl rule
-for PyPI says. The tests check the PyPI and npm identifiers; `pkg:conda` identifiers are untested and are
-normalised as PEP 503 normalises a PyPI name (`.` and `_` become `-`), so `ruamel.yaml` is written
-`pkg:conda/ruamel-yaml`, a form conda does not use. The purl project's published test data is not run, so conformance is not claimed.
+package URL (`pkg:pypi/...`, `pkg:npm/...`, `pkg:conda/...`), each name written as the purl rule for its
+type says: PyPI names lowercased with `_` as `-`, npm names lowercased with a scope as `%40scope`, conda names
+lowercased and otherwise as declared, with a channel written `channel::name` kept as the `channel` qualifier
+(`pkg:conda/numpy@1.26.4?channel=conda-forge`). The tests check identifiers of all three types; the
+purl project's published test data is not run, so conformance is not claimed.
 
 <sub>Named in: `entrovouch/sbom.py`, `docs/WHAT_IS_READ.md`</sub>
 
@@ -183,7 +204,7 @@ Checked by `tests/test_conformance_claims.py` for the ten sections it names: for
 status words (VALIDATED, NOT CLAIMED, DETECTOR TOKENS ONLY and the rest), every file a "Named in" line points to
 names the standard, and for CSAF the named test file exists. Nothing in it checks that a section's test
 passes, and a section added later, or a standard newly named in the code, is not checked by it; keeping
-this file right is part of review.
+this file right is part of review. The RFC 8554 section is checked by `tests/test_lms_rfc8554.py`.
 
 ## Cited, not followed
 

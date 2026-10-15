@@ -4,8 +4,8 @@
 
 | Field | Reproduces? | What it answers |
 |---|---|---|
-| `findings_digest` | yes, across runs, processes and machines (one exception below) | *Does this tool, on this tree, still say this?* |
-| `subject_digest` | yes, per tree and tool (same exception) | *Which tree was audited?* |
+| `findings_digest` | yes, across runs, processes and machines | *Does this tool, on this tree, still say this?* |
+| `subject_digest` | yes, per tree and tool | *Which tree was audited?* |
 | `content_hash` | no for egress, CBOM and SBOM, by design; yes for `key_provenance` with the same label and tree | *Is this the exact artifact I was handed?* |
 
 All three are printed on the report, each labelled. On the egress, CBOM and SBOM reports `content_hash` covers the time
@@ -30,9 +30,7 @@ so compare digests on the same tree with the same label.
 
 ## One tree, one report
 
-Five things that differ between machines are taken out of the result. One is not: on Windows, a directory whose
-name ends in a dot or a space is listed with the skipped directories and its files are not read, so the digest,
-and possibly the verdict, differ from Linux and macOS, where it is read. Audit such a tree on Linux or macOS.
+Five things that differ between machines are taken out of the result.
 
 - **Where the tree sits.** Directories are skipped by their path inside the tree, never by the folders above it.
 - **How the tree's path was typed.** The tree is known by the name its folder is stored under, read from the
@@ -41,14 +39,15 @@ and possibly the verdict, differ from Linux and macOS, where it is read. Audit s
 - **File order.** Paths use forward slashes, are normalised to Unicode NFC and are ordered by their UTF-8 bytes, so
   Windows (which sorts without regard to case) and Linux give one order. NFC follows the Unicode version of the Python
   that runs the tool (14.0 on 3.11, 16.0 on 3.14), so a name holding a character that only a newer version composes
-  can normalise differently between them. On Windows, a file whose name ends in a dot or a space is read by its
-  extended path.
+  can normalise differently between them. On Windows, a file or directory whose name ends in a dot or a space is read by its
+  extended path, as it is read everywhere else.
 - **Line endings.** The subject digest folds CRLF to LF in text files, so a checkout that converted line endings
   matches one that did not. A binary file is hashed byte for byte. A file git treats as text by its own test (no NUL
   byte, no lone CR, few control bytes, such as Cython source or a protocol-0 pickle) is folded as text, at any size.
 - **How deep the parser goes.** Python 3.11 to 3.14 accept different nesting depths, and 3.14's depends on the
-  stack it finds. Every tool applies one lower limit (1,000 levels of Python expressions, 900 of JSON), so a file
-  nested past it is reported as not read on every version and machine. Details:
+  stack it finds. Every tool applies one lower limit (1,000 levels of Python expressions, 900 of JSON, 100 of TOML
+  arrays or inline tables, and Python source of at most 4,194,304 characters), so a file past it is reported as not
+  read on every version and machine. Details:
   [WHAT_IS_READ.md](WHAT_IS_READ.md).
 
 Each file is read as one version for the whole run. If it changes while it is being read, the run stops with exit 2
@@ -68,7 +67,14 @@ this; git's index, which the tree's author writes, does not.
 The rules are tested on Windows and on Linux (Ubuntu 24.04, ext4). The suite was also run by hand on an ext4
 folder set to ignore case, which keeps a path's typed case as macOS does; no automated test creates one. A test pins the digests of one tree, and every system gives the same
 values. The authors have not run macOS on a machine of their own. The test workflow runs the suite, including that
-pinned-digest test, on macOS for every push to `main` and every pull request; for version 1.1.1 it passed on macOS
-with Python 3.11, 3.12, 3.13 and 3.14 in
-[run 37998124472](https://github.com/EntroLabs/EntroVouch/actions/runs/37998124472). If a digest ever differs between
+pinned-digest test, on macOS with Python 3.11, 3.12, 3.13 and 3.14 for every push to `main` and every pull request;
+its [run history](https://github.com/EntroLabs/EntroVouch/actions/workflows/tests.yml) is the record for each version. If a digest ever differs between
 systems, check the operating system first.
+
+## The package itself
+
+A wheel built twice from one commit with the same `SOURCE_DATE_EPOCH` and the same setuptools is byte-identical;
+without `SOURCE_DATE_EPOCH` only the timestamps inside the zip differ. Every report names the version that
+produced it (`tool_version`), and from 1.1.0 on the version changes whenever a report on some tree can change,
+so compare digests between reports of one version. [CHANGELOG.md](../CHANGELOG.md) says, for each version, what can make
+its reports differ from the version before.

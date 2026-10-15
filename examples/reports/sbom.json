@@ -1,8 +1,8 @@
 {
   "tool": "ENTROVOUCH SBOM",
-  "tool_version": "1.1.1",
+  "tool_version": "1.1.3",
   "target": "entrovouch/examples/sample_service",
-  "scanned_at_utc": "2026-10-09T21:24:51.525637+00:00",
+  "scanned_at_utc": "2026-10-15T08:01:22.250596+00:00",
   "files_scanned": 1,
   "verdict": "DECLARED",
   "components": [
@@ -42,8 +42,8 @@
     }
   ],
   "subject_digest": "899cdc1ae105d7e57072041b1e0d3b38096d7470e01d6c500ff4621e8b1fbdc5",
-  "findings_digest": "eba24423f97e712ce825afc682a023c89308d14fbc1850120ab32cd8af307cc4",
-  "content_hash": "782b65d8f5f3aafce0d5f69d30ec9775f233d21c030587f3de87ec6d96fb2db6",
+  "findings_digest": "856181534bcca967c38779733539a373b99d1b52265fee3d70ffc7d2536b3686",
+  "content_hash": "b3edb22c62c334c387101ea87da7515b40ab6f1c450f9f07f42c1970ba645288",
   "integrity_tag": "",
   "signature": null,
   "signature_algorithm": "UNSIGNED - content hash only, origin NOT attested",

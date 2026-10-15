@@ -16,10 +16,10 @@ Then compare **one value** per report:
 
 | Report | Value to compare | Expected |
 |---|---|---|
-| `reports/egress.json` | `findings_digest` | `57a8ec283551cc9d45d8281cc738ca65d0558625f0a9d87c119145337dc3cd62` |
-| `reports/egress.json` | `subject_digest` | `a19a74eacd9be59d4545aec928772b5e6a745c65f029969df244700c84fdc269` |
-| `reports/cbom.json` | `findings_digest` | `d5c39569f213db66be65ff743cfaa0bde9fa6e5258735ec1cb9ea6eb0c28d240` |
-| `reports/sbom.json` | `findings_digest` | `eba24423f97e712ce825afc682a023c89308d14fbc1850120ab32cd8af307cc4` |
+| `reports/egress.json` | `findings_digest` | `c55dd0c95357cc5cf213bac89ca29608df733e8655bd20ed06b3ceb5e6592535` |
+| `reports/egress.json` | `subject_digest` | `0b1c519d12ce52b1801691b769d9eb3dbeda3f1d5c88d47da5b9174f9c113b2f` |
+| `reports/cbom.json` | `findings_digest` | `9bec81cacb2b6843c852a41e457bea8cf2a011afcfe2a201af77ec8008af3823` |
+| `reports/sbom.json` | `findings_digest` | `856181534bcca967c38779733539a373b99d1b52265fee3d70ffc7d2536b3686` |
 
 ```bash
 python -c "import json;print(json.load(open('examples/reports/egress.json'))['findings_digest'])"
@@ -68,8 +68,8 @@ so `regenerate.py` does not re-sign it; `tests/test_signed_example.py` fails whe
 the current audit.
 
 Exit codes for the scanners are in the [root README](../README.md#exit-codes).
-`sbom` exits 0 if it ran; whether the BOM lists components is a field, not an
-exit code.
+`sbom` exits 0 if it ran and read every manifest, and 1 when its verdict is `INCOMPLETE`; whether the BOM lists
+components is a field, not an exit code.
 
 ## What the fixture contains, and why
 
@@ -121,5 +121,5 @@ layer: same tool, a third party on the signature.
   own body rather than leaving you to discover it.
 - **A signature, checked against a pinned root, proves origin and integrity, not correctness.** The reports in
   `reports/` are **UNSIGNED** on purpose: they are the half you can regenerate and compare yourself.
-  One signed copy sits in `signed/`, described below.
+  One signed copy sits in `signed/`, described above.
 - **`REVIEW` means review.** It is not a pass.

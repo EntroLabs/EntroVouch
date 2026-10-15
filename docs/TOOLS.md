@@ -77,12 +77,13 @@ It does not hash a built artifact, does not walk transitive dependencies, and do
 2026 minimum elements. The document labels those gaps `unknown`.
 
 `sbom` exits 0 if it ran and read every manifest; whether the BOM lists components is in the document. A manifest it
-could not open or parse makes the verdict `INCOMPLETE` and the exit code 1, and is named in the document's unknown
-fields.
+could not open or parse, or a manifest of an ecosystem it does not read (`go.mod`, `Cargo.toml`, `pom.xml`,
+`build.gradle`, `Gemfile`, `composer.json`, a `.csproj`, among others), makes the verdict `INCOMPLETE` and the exit
+code 1, and is named in the document's unknown fields: the inventory does not cover what it declares.
 
 Every command lists a file it could not open (permissions, a lock held by another program) and never reports a clean
 result over it. The auditor reports such a file as `unparseable-source`, and the subject digest records it as unread.
 
-Every command applies one nesting limit on every Python version and machine. Python whose expressions nest deeper
-than 1,000 levels, and JSON nested deeper than 900, is not read and is reported the same way as a file that will not
-parse. The reasons are in [WHAT_IS_READ.md](WHAT_IS_READ.md).
+Every command applies one set of limits on every Python version and machine. Python whose expressions nest deeper
+than 1,000 levels, Python source longer than 4,194,304 characters, JSON nested deeper than 900 levels and TOML deeper
+than 100 is not read and is reported the same way as a file that will not parse. The reasons are in [WHAT_IS_READ.md](WHAT_IS_READ.md).

@@ -29,8 +29,8 @@ def sign(key: bytes, message: bytes) -> str:
 
 
 # FIXTURE: a signing key living in the source tree. Present on purpose: this
-# is the exact shape of defect `key_provenance` exists to surface, and it is the
-# shape that was live in this package's own predecessor.
+# is the exact shape of defect `key_provenance` exists to surface: a key that
+# ships with every copy of the code.
 WEBHOOK_SIGNING_KEY = b"s3cret-webhook-key-do-not-ship"
 
 

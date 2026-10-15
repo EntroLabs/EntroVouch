@@ -190,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if getattr(args, 'out', None) is not None:
         clash = missing_folder(args.out, inputs=(args.cbom, args.key_provenance))
-        if clash and 'reads' in clash:
+        if clash and ("reads" in clash or "is a folder" in clash):   # a missing folder is named when written
             print(clash, file=sys.stderr)       # a report converted onto itself would be destroyed
             return 2
 

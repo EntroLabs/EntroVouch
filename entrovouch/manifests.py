@@ -23,7 +23,7 @@ import unicodedata
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from . import _reads
-from ._parse import load_json, parse_python
+from ._parse import load_json, load_toml, parse_python
 
 # Directories skipped by name wherever they appear inside the audited tree.
 SKIP_DIRS = {
@@ -125,7 +125,7 @@ _LINK_TEXT_RE = re.compile(r"(?:\.\.?/)*[A-Za-z0-9_.~@+-]+(?:/[A-Za-z0-9_.~@+-]+
 _LINK_TEXT_MAX = 1024
 
 
-def _is_link_placeholder(full: str, root: str, listing: dict) -> bool:
+def _is_link_placeholder(full: str, root: str, listing: dict, own: str | None = None) -> bool:
     """A file that is a symbolic link checked out as text: one short line, no line break, naming a
     relative path that exists inside the tree. `docs/config.py` holding `../app/config.py` is the usual shape.
 
@@ -159,7 +159,8 @@ def _is_link_placeholder(full: str, root: str, listing: dict) -> bool:
     # by a path with a separator, which pip reads as a local path and which names no package.
     if "/" not in text and is_manifest_path(os.path.basename(os.path.dirname(full)) + "/" + os.path.basename(full)):
         return False
-    own = os.path.relpath(full, root).replace(os.sep, "/")
+    if own is None:
+        own = os.path.relpath(full, root).replace(os.sep, "/")
     joined = posixpath.normpath(posixpath.join(posixpath.dirname(own), text))
     if joined in (".", "..", own):
         return False        # names this file or the tree itself
@@ -213,9 +214,10 @@ def tree_files(target: Path) -> TreeWalk:
 
 def _extended_path(dirpath: str, name: str) -> str:
     """`dirpath/name` as a Windows extended-length path (`\\\\?\\C:\\...`), which keeps a trailing dot or space."""
+    if dirpath.startswith("\\\\?\\"):
+        # already long: os.path.abspath would drop a trailing dot or space from its last part
+        return dirpath + "\\" + name
     base = os.path.abspath(dirpath)
-    if base.startswith("\\\\?\\"):
-        return base + "\\" + name
     if base.startswith("\\\\"):
         return "\\\\?\\UNC\\" + base[2:] + "\\" + name
     return "\\\\?\\" + base + "\\" + name
@@ -250,19 +252,62 @@ def _walk_tree(target: Path) -> TreeWalk:
         seen.add((st.st_dev, st.st_ino))
     except OSError:
         pass
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        rel_dir = os.path.relpath(dirpath, root)
-        parts = [] if rel_dir == "." else rel_dir.replace("\\", "/").split("/")
+    # (directory to walk, the tree's root written the same way, that directory's parts inside the tree)
+    pending: list[tuple[str, str, list[str]]] = [(root, root, [])]
+    stored: dict[str, str] = {}     # each file's path as stored (not NFC) -> its NFC rel
+    while pending:
+        top, form_root, base_parts = pending.pop(0)
+        _walk_one(top, form_root, base_parts, pending, files, skipped, listing, seen, counter := [0], stored)
+        symlinks += counter[0]
+    # Two names the file system keeps apart can be one name after NFC (`é` written as one code point and as two):
+    # those keep the form they are stored in, so each finding names its own file and the order does not depend on
+    # how the file system lists them.
+    counts: dict[str, int] = {}
+    for rel, _ in files:
+        counts[rel] = counts.get(rel, 0) + 1
+    if any(c > 1 for c in counts.values()):
+        as_stored = {}
+        for raw, rel in stored.items():
+            as_stored.setdefault(rel, []).append(raw)
+        files = [(as_stored[rel].pop(0) if counts[rel] > 1 else rel, full) for rel, full in files]
+    files.sort(key=lambda item: _sort_key(item[0]))
+    return TreeWalk(files=files, skipped=dict(sorted(skipped.items())), symlinks=symlinks)
+
+
+def _long_path(path: str) -> str:
+    """`path` as a Windows extended-length path (`\\\\?\\C:\\...`)."""
+    base = os.path.abspath(path)
+    if base.startswith("\\\\?\\"):
+        return base
+    if base.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + base[2:]
+    return "\\\\?\\" + base
+
+
+def _walk_one(top: str, root: str, base_parts: list[str], pending: list, files: list, skipped: dict, listing: dict,
+              seen: set, counter: list, stored: dict) -> None:
+    """Walk one directory into `files` and `skipped`. On Windows, a directory whose name ends in a dot or a space
+    cannot be opened by an ordinary path; it is queued in `pending` to be walked by its extended-length path, with
+    the tree's root written the same way, so its files are read like any other."""
+    # each directory's parts inside the tree, built from the names as listed: a path helper would drop a trailing
+    # dot or space from an extended-length path's last part
+    parts_of: dict[str, list[str]] = {top: base_parts}
+    for dirpath, dirnames, filenames in os.walk(top, followlinks=False):
+        parts = parts_of.pop(dirpath)
         keep: list[str] = []
         for d in dirnames:
             full = os.path.join(dirpath, d)
-            if os.name == "nt" and d[-1:] in (".", " "):
-                # a directory Windows cannot open by an ordinary path: listed, with its files, as not read
-                count = _count_files(_extended_path(dirpath, d))
-                skipped["/".join(parts + [d]) + "/"] = max(count, 1)
+            if os.name == "nt" and d[-1:] in (".", " ") and not dirpath.startswith("\\\\?\\"):
+                # no skipped name ends in a dot or a space, so the folder is walked like any other, by its long path;
+                # a link or junction with such a name is counted and not followed, as every other link is
+                long_d = _extended_path(dirpath, d)
+                if _is_link(long_d):
+                    counter[0] += 1
+                else:
+                    pending.append((long_d, _long_path(root), parts + [d]))
                 continue
             if _is_link(full):
-                symlinks += 1
+                counter[0] += 1
                 continue
             try:
                 st = os.stat(full)
@@ -270,7 +315,7 @@ def _walk_tree(target: Path) -> TreeWalk:
             except OSError:
                 ident = None
             if ident is not None and ident[1] and ident in seen:
-                symlinks += 1          # the same directory again: a mount of a folder already walked
+                counter[0] += 1          # the same directory again: a mount of a folder already walked
                 continue
             if ident is not None:
                 seen.add(ident)
@@ -281,6 +326,8 @@ def _walk_tree(target: Path) -> TreeWalk:
             else:
                 keep.append(d)
         dirnames[:] = keep
+        for d in keep:
+            parts_of[os.path.join(dirpath, d)] = parts + [d]
         for name in filenames:
             full = os.path.join(dirpath, name)
             if os.name == "nt" and name[-1:] in (".", " "):
@@ -288,7 +335,7 @@ def _walk_tree(target: Path) -> TreeWalk:
                 # by its extended-length path, which keeps the name as stored
                 full = _extended_path(dirpath, name)
             if _is_link(full):
-                symlinks += 1
+                counter[0] += 1
                 continue
             if not os.path.isfile(full):
                 continue
@@ -299,22 +346,11 @@ def _walk_tree(target: Path) -> TreeWalk:
                 # `.git/` directory of a clone
                 skipped[rel] = 1
                 continue
-            if _is_link_placeholder(full, root, listing):
-                symlinks += 1
+            if _is_link_placeholder(full, root, listing, own="/".join(parts + [name])):
+                counter[0] += 1
                 continue
             files.append((rel, Path(full)))
-    # Two names the file system keeps apart can be one name after NFC (`é` written as one code point and as two):
-    # those keep the form they are stored in, so each finding names its own file and the order does not depend on
-    # how the file system lists them.
-    counts: dict[str, int] = {}
-    for rel, _ in files:
-        counts[rel] = counts.get(rel, 0) + 1
-    if any(c > 1 for c in counts.values()):
-        files = [(os.path.relpath(str(full), root).replace(os.sep, "/") if counts[rel] > 1 else rel, full)
-                 for rel, full in files]
-    files.sort(key=lambda item: _sort_key(item[0]))
-    return TreeWalk(files=files, skipped=dict(sorted(skipped.items())), symlinks=symlinks)
-
+            stored["/".join(parts + [name])] = rel
 
 def _count_files(top: str) -> int:
     """Files under a skipped directory, counted without following any link, junction or repeated directory."""
@@ -764,9 +800,8 @@ def _dynamic_requirement_files(text: str) -> tuple[list[tuple[str, str]], list[s
     dynamic fields whose source is not named here). setuptools' `[tool.setuptools.dynamic]` (`dependencies =
     {file = [...]}` and each optional group's) and hatch's requirements-txt hook
     (`[tool.hatch.metadata.hooks.requirements_txt]`) are read; Poetry's own table is read elsewhere."""
-    import tomllib
     try:
-        data = tomllib.loads(text)
+        data = load_toml(text)
     except Exception:
         return [], []
     project = data.get("project") if isinstance(data.get("project"), dict) else {}
@@ -873,9 +908,8 @@ def _poetry_table(block, text: str, rel: str, scope: str, extra: str = "",
 
 def _deps_from_pyproject(text: str, rel: str) -> tuple[list[DeclaredDep], list]:
     """Returns (deps, notes) where notes holds ManifestError and RemoteSource items."""
-    import tomllib
     try:
-        data = tomllib.loads(text)
+        data = load_toml(text)
     except Exception:
         return [], [ManifestError(rel, 1, "pyproject.toml could not be parsed")]
 
@@ -1052,9 +1086,8 @@ def _remotes_from_package_json(text: str, rel: str) -> list[RemoteSource]:
 
 
 def _deps_from_pipfile(text: str, rel: str) -> tuple[list[DeclaredDep], list[RemoteSource]]:
-    import tomllib
     try:
-        data = tomllib.loads(text)
+        data = load_toml(text)
     except Exception as exc:
         return [], [ManifestError(rel, getattr(exc, "lineno", None) or 1,
                                   "Pipfile could not be parsed as TOML, so the packages it declares were NOT read")]
@@ -1179,7 +1212,7 @@ def _deps_from_environment_yml(text: str, rel: str) -> tuple[list[DeclaredDep], 
                 remotes.append(RemoteSource(rel, i, hit[0], hit[1]))
             name = requirement_name(item)
         else:
-            name = re.split(r"[=<>!~ ]", item, maxsplit=1)[0].strip() or None
+            name = re.split(r"[=<>!~ \[]", item, maxsplit=1)[0].strip() or None
             if name and "::" in name:
                 name = name.split("::", 1)[1]
         if name:

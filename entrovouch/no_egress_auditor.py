@@ -150,6 +150,26 @@ FORBIDDEN_IMPORT_MODULES = {
 # themselves. Importing one is evidence a network stack is present, not a connection.
 PROTOCOL_LIBRARIES = {"h11", "h2", "hpack", "hyperframe", "wsproto"}
 
+# Radio and peripheral links: libraries whose purpose is a channel off the machine that is not the IP network
+# (Bluetooth, serial lines, USB, CAN bus, Zigbee and mesh radios). Data can leave the device over one of them, so a
+# tree whose only outbound channel is a radio is not CLEAN; the channel is not network egress, so it has its own
+# kind, `peripheral-link`, for a person to review what the device at the other end receives.
+PERIPHERAL_LINK_MODULES = {
+    "bleak", "bluetooth", "bluepy", "pygatt", "simplepyble",    # Bluetooth and Bluetooth Low Energy (PyBluez is `bluetooth`)
+    "meshtastic", "zigpy",                                      # mesh and Zigbee radios
+    "can",                                                      # CAN bus (python-can)
+    "serial",                                                   # serial lines (pyserial)
+    "usb",                                                      # USB devices (pyusb)
+}
+# Zigbee radio drivers for zigpy are published as `zigpy_<radio>` (`zigpy_znp`, `zigpy_deconz`, `zigpy_xbee`).
+PERIPHERAL_LINK_PREFIXES = ("zigpy_",)
+
+
+def _is_peripheral_root(root: str) -> bool:
+    return root in PERIPHERAL_LINK_MODULES or (root.startswith(PERIPHERAL_LINK_PREFIXES)
+                                                and len(root) > len("zigpy_"))
+
+
 # Server frameworks. Importing one is evidence that the package serves requests,
 # not a bound socket at that line; reported as a server dependency.
 INBOUND_FRAMEWORKS = {
@@ -828,6 +848,8 @@ def _classify_module(name: str) -> str | None:
         return "inbound-dependency"   # server package present; this line binds nothing
     if name.startswith("sklearn.datasets.fetch_"):
         return "network"              # the scikit-learn fetchers download on first use
+    if _is_peripheral_root(root):
+        return "peripheral"           # a radio or peripheral link: not the IP network, reported for review
     return None
 
 
@@ -930,8 +952,11 @@ CSS_URL_RE = re.compile(r"""(?:@import\s+(?:url\()?\s*['"]?|url\(\s*['"]?)(?:htt
 # A tag and its attributes, across lines. Attribute values may be quoted either way or not at all.
 # a tag and its attributes; a quoted value may hold `>` (`<img v-if="n > 0" src=...>`), and a quote with no partner is a
 # character (each piece is taken atomically, so a tag that never closes costs one pass)
-_MARKUP_TAG_RE = re.compile(r"""<([A-Za-z][\w:.-]*)\b((?>[^<>"']+|"[^"<]*"|'[^'<]*'|["'])*)>""", re.S)
-_MARKUP_ATTR_RE = re.compile(r"""([@:\w.-]+)\s*=\s*("[^"]*"|'[^']*'|[^\s"'<>]+)""")
+# A tag's attributes as the HTML tokenizer reads them: a value, quoted or unquoted (up to a space or `>`), may hold
+# `<`; outside a value a `<` ends the tag. Possessive throughout, so a failed attempt never backtracks.
+_TAG_ATTRS = r"""(?:[^<>"'=]++|=\s*+(?:"[^"]*+"|'[^']*+'|[^\s>"']*+)|["'])*+"""
+_MARKUP_TAG_RE = re.compile(r"<([A-Za-z][\w:.-]*+)\b(" + _TAG_ATTRS + r")>", re.S)
+_MARKUP_ATTR_RE = re.compile(r"""([@:\w.-]+)\s*=\s*("[^"]*"|'[^']*'|[^\s"'>]+)""")
 # Attributes the page fetches from when it renders, and the tags whose `href` is a fetch, not a link.
 _LOAD_ATTRS = {"src", "srcset", "imagesrcset", "poster", "background", "codebase", "manifest", "lowsrc", "dynsrc",
                "archive"}
@@ -964,7 +989,17 @@ _SCRIPT_BLOCK_LOADS_RE = re.compile(
     r"""\.src\s*=|setAttribute\s*\(\s*['"](?:src|href)['"]|\bnew\s+(?:Image|XMLHttpRequest|WebSocket|EventSource|Worker)\b|"""
     r"""\bfetch\s*\(|sendBeacon\s*\(|\bimportScripts\s*\(|\bimport\s*\(""")
 # An anchor the user must click. Nothing is fetched by loading the page.
-ANCHOR_RE = re.compile(r"""<a\b[^>]*?\bhref\s*=\s*(['"])(?:https?:)?//[^'"]*\1[^>]*>""", re.IGNORECASE)
+# An `<a>` whose href is an absolute or scheme-relative address: a link the user must follow. Found per tag through
+# `_MARKUP_TAG_RE`, which reads a tag in one linear pass.
+_ANCHOR_HREF_RE = re.compile(r"""\bhref\s*=\s*(['"])(?:https?:)?//[^'"]*\1""", re.IGNORECASE)
+
+
+def _strip_anchors(line: str) -> str:
+    """`line` without its `<a href="https://...">` tags."""
+    if "<" not in line:
+        return line
+    return _MARKUP_TAG_RE.sub(
+        lambda m: "" if m.group(1).lower() == "a" and _ANCHOR_HREF_RE.search(m.group(2)) else m.group(0), line)
 # A URL string that is only a postMessage target origin or compared against an `origin` makes no request.
 # Stripped before the URL test, so anything else on the line (a fetch, a src, a second URL) still counts.
 ORIGIN_ONLY_URL_RE = re.compile(
@@ -981,9 +1016,11 @@ _VOCAB_ATTR_RE = re.compile(
 _PAGE_EXTS = {".html", ".htm", ".xhtml", ".svg", ".j2", ".jinja", ".jinja2", ".njk", ".hbs", ".ejs", ".twig", ".erb"}
 # What a browser or a template engine acts on: script and style blocks, tags, template expressions.
 _PAGE_TAG_RE = re.compile(r"<[^<>]*>")
-# an opening tag whose quoted attribute values may hold `<` and `>` (`<iframe src="data:text/html,<b>x</b>">`); a
-# value is bounded, so an unclosed quote costs a bounded scan
-_PAGE_QUOTED_TAG_RE = re.compile(r"""<[A-Za-z][^<>"']*(?:(?:"[^"]{0,4096}"|'[^']{0,4096}')[^<>"']*)*>""")
+# an opening tag whose attribute values may hold `<`: a quoted one `<` and `>` (`<iframe src="data:text/html,<b>x</b>">`),
+# an unquoted one `<` up to the next space or `>` (`<img src=https://h/a.png?a<b>`), as the HTML tokenizer reads them.
+# A quoted value is bounded, so an unclosed quote costs a bounded scan; a `<` outside a value ends the attempt.
+_PAGE_QUOTED_TAG_RE = re.compile(
+    r"""<[A-Za-z](?:[^<>"'=]++|=\s*+(?:"[^"]{0,4096}"|'[^']{0,4096}'|[^\s>"']*+))*+>""")
 
 
 def _page_active_spans(text: str) -> list[tuple[int, int]]:
@@ -2205,7 +2242,10 @@ class AuditReport:
         "network-capable imports, calls that connect or listen, process spawns that reach a "
         "network binary, shell strings, dynamic code loading, native calls, external "
         "references, network commands in scripts, and declared network dependencies and "
-        "remote sources. It does NOT prove zero egress: this is a Turing-complete language "
+        "remote sources. A Python import of a radio or peripheral-link library (Bluetooth, "
+        "serial, USB, CAN, Zigbee, mesh radio) is reported as `peripheral-link`, for review: "
+        "a link off the device that is not the IP network. "
+        "It does NOT prove zero egress: this is a Turing-complete language "
         "and the analysis underapproximates. Detection is BLOCKLIST-BASED, so it is complete "
         "only against names it knows: a renamed, vendored or dynamically-constructed "
         "module or argv entry is invisible. Measured against network libraries chosen "
@@ -2296,7 +2336,7 @@ _SOURCE_ROOTS = {"src", "lib", "python", "source", "sources", "pysrc", "py"}
 
 
 def _local_top_level_modules(target: Path, rels: frozenset[str] | None = None,
-                              extended: set[str] | None = None) -> set[str]:
+                              extended: set[str] | None = None, paths: dict | None = None) -> set[str]:
     """Top-level module names the SCANNED TREE ITSELF provides.
 
     The list holds ordinary English words as module names (`motor`, `docker`,
@@ -2329,7 +2369,7 @@ def _local_top_level_modules(target: Path, rels: frozenset[str] | None = None,
                      if r.rpartition("/")[2] in ("pyproject.toml", "setup.py", "setup.cfg") and "/" in r}
     if "__init__.py" in rels:
         names.add(_subject_name(target))
-        if extended is not None and _extends_its_path(target, "__init__.py"):
+        if extended is not None and _extends_its_path(target, "__init__.py", paths):
             extended.add(_subject_name(target))
     for rel in rels:
         parts = rel.split("/")
@@ -2340,7 +2380,7 @@ def _local_top_level_modules(target: Path, rels: frozenset[str] | None = None,
         elif parts[-1] == "__init__.py" and not any(is_skipped_dir(d) for d in parts[:-1]):
             if len(parts) == 2:
                 names.add(parts[0])
-                if extended is not None and _extends_its_path(target, rel):
+                if extended is not None and _extends_its_path(target, rel, paths):
                     extended.add(parts[0])
             elif "/".join(parts[:-2]) + "/__init__.py" not in rels and (
                     parts[-3].lower() in _SOURCE_ROOTS or "/".join(parts[:-2]) in project_roots):
@@ -2349,7 +2389,7 @@ def _local_top_level_modules(target: Path, rels: frozenset[str] | None = None,
                 # packages): either is put on the import path when the project is installed. A package under any
                 # other folder (`myapp/integrations/telethon/`) is not importable by its own name.
                 names.add(parts[-2])
-                if extended is not None and _extends_its_path(target, rel):
+                if extended is not None and _extends_its_path(target, rel, paths):
                     extended.add(parts[-2])
     return names
 
@@ -2357,12 +2397,13 @@ def _local_top_level_modules(target: Path, rels: frozenset[str] | None = None,
 _EXTEND_PATH_RE = re.compile(r"\b(?:extend_path|declare_namespace)\s*\(")
 
 
-def _extends_its_path(target: Path, rel: str) -> bool:
+def _extends_its_path(target: Path, rel: str, paths: dict | None = None) -> bool:
     """Is this `__init__.py` a namespace package's (`__path__ = pkgutil.extend_path(__path__, __name__)`,
     `pkg_resources.declare_namespace(__name__)`)? Then installed distributions add their modules to the same name, and
     a module the tree does not hold is imported from them. A file that cannot be read is taken as an ordinary package."""
     try:
-        return _EXTEND_PATH_RE.search(_reads.read_python_source(target / rel)) is not None
+        path = (paths or {}).get(rel) or target / rel       # the walked path: a name ending in a dot keeps it
+        return _EXTEND_PATH_RE.search(_reads.read_python_source(path)) is not None
     except (OSError, ValueError):
         return False
 
@@ -2723,6 +2764,12 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
             out.append(Finding(rel, line, "network-dependency",
                                f"{shown}: a server package or one of its submodules; evidence it is present, "
                                "NOT a bound socket here"))
+        elif cls == "peripheral":
+            out.append(Finding(rel, line, "peripheral-link",
+                               f"{shown}: a radio or peripheral-link library (Bluetooth, serial, USB, CAN, Zigbee or "
+                               "mesh radio), or one of its modules. Data can leave the device over such a link; it is "
+                               "not the IP network and is not reported as network egress. REVIEW what the device at "
+                               "the other end receives"))
 
     # asyncio evidence for the method-name matches below: the names asyncio is bound to, and whether the
     # module imports anything from it (an event loop `loop.create_connection` has no asyncio receiver name).
@@ -8085,8 +8132,8 @@ def python_units(path: Path) -> list[tuple[str, int | None]] | None:
     if _is_python_file(path, suffix):
         try:
             src = _read_python_source(path)
-        except (SyntaxError, LookupError, UnicodeDecodeError):
-            return [(_reads.read_text(path), None)]
+        except (SyntaxError, LookupError, UnicodeDecodeError) as exc:
+            raise PythonNotDecodable(type(exc).__name__) from exc
         return [(src, None)] + exported_magic_units(src)
     if suffix in PTH_EXTS and _is_text_pth(path):
         lines = _reads.read_text(path).splitlines()
@@ -8161,6 +8208,11 @@ def _check_notebook(path: Path, rel: str, local_modules: frozenset[str] = frozen
                     out += [Finding(rel, number, f.kind, f"cell {number}'s saved {mime} output: {f.detail}")
                             for f in _display_cell_findings(magic, text, rel)]
     return out
+
+
+class PythonNotDecodable(ValueError):
+    """A Python file that Python itself cannot decode (bytes that are not UTF-8 and no encoding declaration, or a
+    declaration naming an unknown codec). It is listed as not parsed, as the interpreter would refuse it."""
 
 
 class NotPythonNotebook(ValueError):
@@ -8647,7 +8699,7 @@ def _check_markup(path: Path, rel: str, unlisted: set[str] | None = None, text: 
                 anchor_lines.add(bisect.bisect_right(anchor_starts, m.start()))
             return re.sub(r"[^\n]", " ", tag)
         # (an attribute's quoted value may hold `>`: `<a v-if="n > 1" href=...>`)
-        attrs = r"""(?>[^<>"']+|"[^"<]*"|'[^'<]*'|["'])*"""
+        attrs = _TAG_ATTRS
         text = re.sub(rf"<(?:a|form|area)\b{attrs}>|<(?:button|input)\b(?=[^<>]*\bformaction\b){attrs}>", _anchor, text,
                       flags=re.I)
     # Where the page LOADS from: an attribute that fetches (`src`, `srcset`, `poster`, an object's `data`,
@@ -8695,7 +8747,7 @@ def _check_markup(path: Path, rel: str, unlisted: set[str] | None = None, text: 
         line = _SHOWN_TEXT_ATTR_RE.sub("", line)
         stripped = _strip_origin_only_urls(line)
         # An anchor is a link the user must click: reported, and told apart from a load.
-        without_anchors = ANCHOR_RE.sub("", stripped)
+        without_anchors = _strip_anchors(stripped)
         loads = _has_external_url(without_anchors) or PROTO_REL_RE.search(without_anchors)
         if not loads and (i in anchor_lines or without_anchors != stripped):
             out.append(Finding(rel, i, "external-link", "link to an external URL; nothing is fetched by loading the page"))
@@ -9418,7 +9470,8 @@ def _audit(target: Path, label: str | None, signer: "MerkleSigner | None") -> Au
     walk = tree_files(target)
     skipped = walk.skipped
     extended: set[str] = set()
-    local_modules = frozenset(_local_top_level_modules(target, frozenset(rel for rel, _ in walk.files), extended))
+    local_modules = frozenset(_local_top_level_modules(target, frozenset(rel for rel, _ in walk.files), extended,
+                                                       dict(walk.files)))
     # every directory and module name the tree itself holds: an import of one is the tree's own code
     own_names = frozenset(part[:-3] if part.lower().endswith(".py") else part
                           for rel, _ in walk.files if rel.lower().endswith((".py", ".pyw"))
@@ -9620,7 +9673,8 @@ def render_markdown(rep: AuditReport) -> str:
         f"- **Target:** {markdown_code(rep.target, in_table=False)}",
         f"- **Scanned:** {rep.scanned_at_utc}",
         f"- **Files scanned:** {rep.files_scanned}"
-        + (f" ({rep.files_not_read} more were not read: skipped directories, types this tool has no reader "
+        + (f" ({rep.files_not_read} more {'was' if rep.files_not_read == 1 else 'were'} not read: skipped "
+           f"directories, types this tool has no reader "
            f"for, and links, listed below)"
            if rep.files_not_read else ""),
         *([f"- **Resolved locally, NOT counted as network imports:** "
@@ -9724,7 +9778,8 @@ def _not_scanned_lines(rep: AuditReport) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="ENTROVOUCH no-egress auditor")
+    ap = argparse.ArgumentParser(prog="python -m entrovouch.no_egress_auditor", description="ENTROVOUCH no-egress auditor")
+    ap.add_argument("--version", action="version", version=f"entrovouch {__version__}")
     ap.add_argument("target", type=Path, nargs="?", help="directory to audit")
     ap.add_argument("--json", type=Path, default=None, help="write JSON report")
     ap.add_argument("--md", type=Path, default=None, help="write markdown report")

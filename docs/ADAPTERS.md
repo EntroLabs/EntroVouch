@@ -8,7 +8,7 @@ each output was run against, is in [CONFORMANCE.md](../CONFORMANCE.md).
 
 An adapter exits 2 rather than convert:
 
-- an output path that is one of its own inputs, or a hard link to one;
+- an output path that is one of its own inputs, or a hard link to one, or a folder;
 - a report saved with a byte-order mark it was written without (an editor adds one);
 - a report whose body no longer matches its own `content_hash`, or that has no content hash;
 - a report whose `findings_digest` is not the digest of the findings it shows;
@@ -59,9 +59,14 @@ without a byte-order mark and strict JSON (a JSON file in UTF-16 or UTF-32 is re
 report of this tool must be that report exactly, intact and with its content hash. The digest is taken from the bytes
 that were checked.
 
-`timestamp check` passes when the token is one DER structure holding the report's digest and, with `--nonce`, the
-nonce that `request` printed, as a DER integer somewhere after the message imprint (the TSTInfo fields are not parsed). Without `--nonce` it says the nonce was
-not checked.
+`timestamp check` reads a timestamp response (the `.tsr` a timestamp authority returns) or a bare timestamp token
+(what `openssl ts -reply -token_out` writes) by its own structure (RFC 3161 section 2.4.2). It passes when the
+`messageImprint` of the TSTInfo the signature covers is the report's digest and, with `--nonce`, when that TSTInfo's
+nonce field holds the value `request` printed. A TSTInfo or an integer anywhere else in the token, such as in an
+unsigned attribute, does not count. Without `--nonce`, any other file that is one DER sequence passes when it holds
+the digest anywhere, and the command says that is containment, not an imprint match; with `--nonce` it fails,
+because there is no TSTInfo to read a nonce from. Without `--nonce` it says the nonce was not checked. The TSA's
+signature and certificate chain are not verified; the command prints the `openssl ts -verify` line that checks them.
 
 ## SARIF
 

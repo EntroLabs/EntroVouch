@@ -371,3 +371,16 @@ def test_reports_are_written_with_lf_line_endings(tmp_path):
     rep, md = tmp_path / "r.json", tmp_path / "r.md"
     _cli("no_egress_auditor", tmp_path / "p", "--json", rep, "--md", md)
     assert b"\r\n" not in rep.read_bytes() and b"\r\n" not in md.read_bytes()
+
+
+
+# ---------------------------------------------------------------- package URLs for conda
+def test_a_conda_package_url_keeps_the_name_as_conda_writes_it(tmp_path):
+    """conda keeps `.` and `_` in a package name; its package URL is the name lowercased, nothing else changed.
+    A pip entry inside the same file keeps the PyPI rule (`_` becomes `-`, `.` stays). conda's `=4.8.0` matches
+    any 4.8.0.x, so it names no exact version; `==` does."""
+    _write(tmp_path, "environment.yml", "dependencies:\n  - ruamel.yaml==0.17.21\n  - Typing_Extensions=4.8.0\n"
+                                        "  - pip:\n    - typing_extensions==4.8.0\n")
+    purls = sorted(c["purl"] for c in asdict(sbom.build_sbom(tmp_path))["components"])
+    assert purls == ["pkg:conda/ruamel.yaml@0.17.21", "pkg:conda/typing_extensions",
+                     "pkg:pypi/typing-extensions@4.8.0"]

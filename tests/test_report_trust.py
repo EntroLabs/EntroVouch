@@ -308,7 +308,8 @@ def test_the_timestamp_check_requires_the_nonce_it_is_given(tmp_path):
     assert _cli("no_egress_auditor", tmp_path / "p", "--json", rep).returncode == 0
     digest = report_digest(rep)
     token = tmp_path / "t.tsr"
-    token.write_bytes(_der_seq(_der_octet(digest), _der_int(123456789)))
+    from test_report_kinds_and_reads import _tst_response
+    token.write_bytes(_tst_response(digest, nonce=123456789))
     assert _cli("timestamp", "check", rep, "--token", token, "--nonce", 123456789).returncode == 0
     r = _cli("timestamp", "check", rep, "--token", token, "--nonce", 987654321)
     assert r.returncode == 1 and "does NOT echo the nonce" in r.stdout
