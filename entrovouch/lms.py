@@ -1,15 +1,24 @@
 """
 ENTROVOUCH: Leighton-Micali signatures (LMS) and the Hierarchical Signature System (HSS), RFC 8554.
 
-Pure standard library (`hashlib.sha256`). It verifies LMS and HSS signatures for the parameter sets RFC 8554
-defines (SHA-256, n = m = 32: LMOTS W1, W2, W4, W8 and LMS heights 5, 10, 15, 20 and 25), and signs with an LMS key whose
-one-time keys are derived from a seed as RFC 8554 Appendix A describes.
+Pure standard library (`hashlib`). It verifies LMS and HSS signatures for the parameter sets RFC 8554 defines
+(SHA-256, n = m = 32: LMOTS W1, W2, W4, W8 and LMS heights 5, 10, 15, 20 and 25) and for the further sets RFC 9858
+defines (SHA-256/192, SHAKE256/256 and SHAKE256/192, with the same W values and heights), and signs with an LMS key
+whose one-time keys are derived from a seed as RFC 8554 Appendix A describes. Signing uses the RFC 8554 SHA-256 sets
+at heights 5 and 10 only; taller trees and the RFC 9858 sets are verified, never made.
 
 WHAT IT CLAIMS, AND WHAT IT DOES NOT
 ------------------------------------
-- It reproduces the published test vectors of RFC 8554 Appendix F: both HSS signatures verify, and the second test
-  case, whose private keys the RFC gives, is reproduced byte for byte from those keys
-  (`tests/test_lms_rfc8554.py`). That is the whole of its conformance claim.
+- It verifies both test cases of RFC 8554 Appendix F and reproduces test case 2, whose private keys the RFC gives,
+  byte for byte from those keys; test case 1 gives no private key, so it is verified and not reproduced
+  (`tests/test_lms_rfc8554.py`).
+- It verifies the 4 published test cases of RFC 9858 Appendix A, one or more for each hash RFC 9858 adds
+  (SHA-256/192, SHAKE256/192 and SHAKE256/256). It does not sign with those sets, so the signatures are verified and
+  not reproduced (`tests/test_lms_rfc9858.py`).
+- It gives the published answer on the 8 LMS sigVer vectors NIST publishes in its ACVP-Server repository, which cover two SHA-256/192
+  parameter sets only: both valid signatures verify and the six altered ones are refused (`tests/test_lms_acvp.py`).
+  Running published vectors is not CAVP validation, and no CAVP validation has been run. These three sets of vectors
+  are the whole of its conformance claim.
 - It is NOT validated under NIST SP 800-208. SP 800-208 permits LMS signing only inside a hardware cryptographic
   module that holds the state; this module keeps its state in a file on disk, where a copy or a restore from backup
   can bring a used one-time key back.
@@ -39,7 +48,7 @@ from ._state_io import atomic_write, read_state_text, remove_stale_temps, state_
 from .signer import IndexReuse, KeyExhausted, SignerError, _refuse_second_name
 
 __all__ = [
-    "LMOTS_TYPES", "LMS_TYPES", "LmsKey", "lms_verify", "hss_verify", "lms_public_key_length",
+    "LMOTS_TYPES", "LMS_TYPES", "LMOTS_VERIFY_TYPES", "LMS_VERIFY_TYPES", "LmsKey", "lms_verify", "hss_verify", "lms_public_key_length",
     "lms_signature_length", "LMS_SHA256_M32_H5", "LMS_SHA256_M32_H10", "LMOTS_SHA256_N32_W4",
     "LMOTS_SHA256_N32_W8",
 ]
@@ -60,6 +69,44 @@ LMS_TYPES = {
     9: ("LMS_SHA256_M32_H25", 32, 25),
 }
 LMOTS_SHA256_N32_W4, LMOTS_SHA256_N32_W8 = 3, 4
+
+# Every set this module VERIFIES: typecode -> (name, hash family, n, w, p, ls) and typecode -> (name, hash family, m, h).
+# The RFC 8554 sets above (the only ones signed, at heights 5 and 10), then RFC 9858 Tables 1 and 2. A family and an output length together
+# name the hash: ("sha256", 24) is SHA-256/192, the first 24 bytes of SHA-256; ("shake256", n) is the first n bytes of
+# SHAKE256.
+LMOTS_VERIFY_TYPES = {code: (name, "sha256", n, w, p, ls) for code, (name, n, w, p, ls) in LMOTS_TYPES.items()}
+LMOTS_VERIFY_TYPES.update({
+    5: ("LMOTS_SHA256_N24_W1", "sha256", 24, 1, 200, 8),
+    6: ("LMOTS_SHA256_N24_W2", "sha256", 24, 2, 101, 6),
+    7: ("LMOTS_SHA256_N24_W4", "sha256", 24, 4, 51, 4),
+    8: ("LMOTS_SHA256_N24_W8", "sha256", 24, 8, 26, 0),
+    9: ("LMOTS_SHAKE_N32_W1", "shake256", 32, 1, 265, 7),
+    10: ("LMOTS_SHAKE_N32_W2", "shake256", 32, 2, 133, 6),
+    11: ("LMOTS_SHAKE_N32_W4", "shake256", 32, 4, 67, 4),
+    12: ("LMOTS_SHAKE_N32_W8", "shake256", 32, 8, 34, 0),
+    13: ("LMOTS_SHAKE_N24_W1", "shake256", 24, 1, 200, 8),
+    14: ("LMOTS_SHAKE_N24_W2", "shake256", 24, 2, 101, 6),
+    15: ("LMOTS_SHAKE_N24_W4", "shake256", 24, 4, 51, 4),
+    16: ("LMOTS_SHAKE_N24_W8", "shake256", 24, 8, 26, 0),
+})
+LMS_VERIFY_TYPES = {code: (name, "sha256", m, h) for code, (name, m, h) in LMS_TYPES.items()}
+LMS_VERIFY_TYPES.update({
+    0x0A: ("LMS_SHA256_M24_H5", "sha256", 24, 5),
+    0x0B: ("LMS_SHA256_M24_H10", "sha256", 24, 10),
+    0x0C: ("LMS_SHA256_M24_H15", "sha256", 24, 15),
+    0x0D: ("LMS_SHA256_M24_H20", "sha256", 24, 20),
+    0x0E: ("LMS_SHA256_M24_H25", "sha256", 24, 25),
+    0x0F: ("LMS_SHAKE_M32_H5", "shake256", 32, 5),
+    0x10: ("LMS_SHAKE_M32_H10", "shake256", 32, 10),
+    0x11: ("LMS_SHAKE_M32_H15", "shake256", 32, 15),
+    0x12: ("LMS_SHAKE_M32_H20", "shake256", 32, 20),
+    0x13: ("LMS_SHAKE_M32_H25", "shake256", 32, 25),
+    0x14: ("LMS_SHAKE_M24_H5", "shake256", 24, 5),
+    0x15: ("LMS_SHAKE_M24_H10", "shake256", 24, 10),
+    0x16: ("LMS_SHAKE_M24_H15", "shake256", 24, 15),
+    0x17: ("LMS_SHAKE_M24_H20", "shake256", 24, 20),
+    0x18: ("LMS_SHAKE_M24_H25", "shake256", 24, 25),
+})
 LMS_SHA256_M32_H5, LMS_SHA256_M32_H10 = 5, 6
 
 D_PBLC, D_MESG, D_LEAF, D_INTR = b"\x80\x80", b"\x81\x81", b"\x82\x82", b"\x83\x83"
@@ -80,6 +127,25 @@ def _h(*parts: bytes) -> bytes:
     return d.digest()
 
 
+def _hash(family: str, n: int):
+    """The hash a parameter set names: the first n bytes of SHA-256, or the first n bytes of SHAKE256."""
+    if family == "sha256":
+        def digest(*parts: bytes) -> bytes:
+            d = hashlib.sha256()
+            for part in parts:
+                d.update(part)
+            return d.digest()[:n]
+    elif family == "shake256":
+        def digest(*parts: bytes) -> bytes:
+            d = hashlib.shake_256()
+            for part in parts:
+                d.update(part)
+            return d.digest(n)
+    else:
+        raise ValueError(f"unknown hash family {family!r}")
+    return digest
+
+
 def _coef(s: bytes, i: int, w: int) -> int:
     """RFC 8554 Section 3.1.3."""
     return ((1 << w) - 1) & (s[(i * w) // 8] >> (8 - (w * (i % (8 // w)) + w)))
@@ -91,26 +157,34 @@ def _cksm(s: bytes, n: int, w: int, ls: int) -> bytes:
     return ((total << ls) & 0xFFFF).to_bytes(2, "big")
 
 
-def _chain(I: bytes, q: bytes, i: int, start: int, stop: int, tmp: bytes) -> bytes:
-    """Iterate the LM-OTS chain for digit i from step `start` up to (not including) `stop`."""
+def _chain(I: bytes, q: bytes, i: int, start: int, stop: int, tmp: bytes, hf=_h) -> bytes:
+    """Iterate the LM-OTS chain for digit i from step `start` up to (not including) `stop`, with the hash `hf`."""
     i_bytes = i.to_bytes(2, "big")
     for j in range(start, stop):
-        tmp = _h(I, q, i_bytes, bytes([j]), tmp)
+        tmp = hf(I, q, i_bytes, bytes([j]), tmp)
     return tmp
 
 
 def lms_public_key_length(lms_type: int) -> int:
-    return 4 + 4 + 16 + LMS_TYPES[lms_type][1]
+    return 4 + 4 + 16 + LMS_VERIFY_TYPES[lms_type][2]
 
 
 def _ots_signature_length(ots_type: int) -> int:
-    _, n, _, p, _ = LMOTS_TYPES[ots_type]
+    _, _, n, _, p, _ = LMOTS_VERIFY_TYPES[ots_type]
     return 4 + n * (p + 1)
 
 
 def lms_signature_length(lms_type: int, ots_type: int) -> int:
-    _, m, h = LMS_TYPES[lms_type]
+    _, _, m, h = LMS_VERIFY_TYPES[lms_type]
     return 4 + _ots_signature_length(ots_type) + 4 + m * h
+
+
+def _same_hash(lms_type: int, ots_type: int) -> bool:
+    """A tree and its one-time keys use one hash: the same family and the same output length. A pair that mixes
+    them (a SHA-256/192 tree over SHAKE256 one-time keys, or n = 24 one-time keys under an m = 32 tree) is refused."""
+    _, lms_family, m, _ = LMS_VERIFY_TYPES[lms_type]
+    _, ots_family, n, _, _, _ = LMOTS_VERIFY_TYPES[ots_type]
+    return (lms_family, m) == (ots_family, n)
 
 
 def _ots_candidate(I: bytes, q: int, sig: bytes, message: bytes, pub_ots_type: int) -> bytes | None:
@@ -118,21 +192,22 @@ def _ots_candidate(I: bytes, q: int, sig: bytes, message: bytes, pub_ots_type: i
     if len(sig) < 4:
         return None
     ots_type = int.from_bytes(sig[:4], "big")
-    if ots_type != pub_ots_type or ots_type not in LMOTS_TYPES:
+    if ots_type != pub_ots_type or ots_type not in LMOTS_VERIFY_TYPES:
         return None
-    _, n, w, p, ls = LMOTS_TYPES[ots_type]
+    _, family, n, w, p, ls = LMOTS_VERIFY_TYPES[ots_type]
     if len(sig) != 4 + n * (p + 1):
         return None
+    hf = _hash(family, n)
     c = sig[4:4 + n]
     qb = _u32(q)
-    digest = _h(I, qb, D_MESG, c, message)
+    digest = hf(I, qb, D_MESG, c, message)
     digits = digest + _cksm(digest, n, w, ls)
     z = []
     for i in range(p):
         a = _coef(digits, i, w)
         y = sig[4 + n + i * n:4 + n + (i + 1) * n]
-        z.append(_chain(I, qb, i, a, (1 << w) - 1, y))
-    return _h(I, qb, D_PBLC, *z)
+        z.append(_chain(I, qb, i, a, (1 << w) - 1, y, hf))
+    return hf(I, qb, D_PBLC, *z)
 
 
 def _parse_lms_public_key(pub: bytes):
@@ -140,7 +215,9 @@ def _parse_lms_public_key(pub: bytes):
         return None
     lms_type = int.from_bytes(pub[:4], "big")
     ots_type = int.from_bytes(pub[4:8], "big")
-    if lms_type not in LMS_TYPES or ots_type not in LMOTS_TYPES or len(pub) != lms_public_key_length(lms_type):
+    if lms_type not in LMS_VERIFY_TYPES or ots_type not in LMOTS_VERIFY_TYPES:
+        return None
+    if not _same_hash(lms_type, ots_type) or len(pub) != lms_public_key_length(lms_type):
         return None
     return lms_type, ots_type, pub[8:24], pub[24:]
 
@@ -152,7 +229,7 @@ def lms_verify(public_key: bytes, message: bytes, signature: bytes) -> bool:
         return False
     lms_type, ots_type, I, T1 = parsed
     sig = bytes(signature)
-    _, m, h = LMS_TYPES[lms_type]
+    _, family, m, h = LMS_VERIFY_TYPES[lms_type]
     if len(sig) < 8:
         return False
     q = int.from_bytes(sig[:4], "big")
@@ -168,16 +245,17 @@ def lms_verify(public_key: bytes, message: bytes, signature: bytes) -> bool:
     kc = _ots_candidate(I, q, sig[4:4 + ots_len], bytes(message), ots_type)
     if kc is None:
         return False
+    hf = _hash(family, m)
     path = sig[8 + ots_len:]
     node = (1 << h) + q
-    tmp = _h(I, _u32(node), D_LEAF, kc)
+    tmp = hf(I, _u32(node), D_LEAF, kc)
     i = 0
     while node > 1:
         sibling = path[i * m:(i + 1) * m]
         if node & 1:
-            tmp = _h(I, _u32(node // 2), D_INTR, sibling, tmp)
+            tmp = hf(I, _u32(node // 2), D_INTR, sibling, tmp)
         else:
-            tmp = _h(I, _u32(node // 2), D_INTR, tmp, sibling)
+            tmp = hf(I, _u32(node // 2), D_INTR, tmp, sibling)
         node //= 2
         i += 1
     return hmac.compare_digest(tmp, T1)
@@ -217,13 +295,13 @@ def _split_lms_signature(buf: bytes, at: int):
     if len(buf) < at + 8:
         return None
     ots_type = int.from_bytes(buf[at + 4:at + 8], "big")
-    if ots_type not in LMOTS_TYPES:
+    if ots_type not in LMOTS_VERIFY_TYPES:
         return None
     type_at = at + 4 + _ots_signature_length(ots_type)
     if len(buf) < type_at + 4:
         return None
     lms_type = int.from_bytes(buf[type_at:type_at + 4], "big")
-    if lms_type not in LMS_TYPES:
+    if lms_type not in LMS_VERIFY_TYPES:
         return None
     end = at + lms_signature_length(lms_type, ots_type)
     if len(buf) < end:
@@ -235,7 +313,7 @@ def _split_lms_public_key(buf: bytes, at: int):
     if len(buf) < at + 4:
         return None
     lms_type = int.from_bytes(buf[at:at + 4], "big")
-    if lms_type not in LMS_TYPES:
+    if lms_type not in LMS_VERIFY_TYPES:
         return None
     end = at + lms_public_key_length(lms_type)
     if len(buf) < end:
@@ -262,7 +340,7 @@ class LmsKey:
 
     def __post_init__(self):
         if self.lms_type not in LMS_TYPES or self.ots_type not in LMOTS_TYPES:
-            raise SignerError("unknown LMS or LM-OTS typecode")
+            raise SignerError("unknown LMS or LM-OTS typecode, or a set this module verifies but does not sign")
         if LMS_TYPES[self.lms_type][2] > _MAX_SIGNING_HEIGHT:
             raise SignerError(f"signing keys are limited to height {_MAX_SIGNING_HEIGHT}; taller trees are verified only")
         if not isinstance(self.I, bytes) or len(self.I) != 16:

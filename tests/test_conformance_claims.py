@@ -107,6 +107,8 @@ _NAMED_TERMS = {
     "RFC 3161 (trusted timestamps)": "RFC 3161", "VEX (CycloneDX-native)": "VEX", "CSAF 2.0 (VEX profile)": "CSAF",
     "Lamport-Merkle SHA3-256 (this package's signer)": "Lamport", "FIPS 203 / 204 / 205 (ML-KEM, ML-DSA, SLH-DSA)": "FIPS",
     "CISA 2026 Minimum Elements for an SBOM": "CISA", "CISA / NIST CBOM minimum elements (EO 14412 §5(d))": "EO 14412",
+    "C2SP tlog-tiles, tlog-checkpoint and signed-note; RFC 9162 Merkle trees": "C2SP",
+    "RFC 8554 and RFC 9858 (LMS and HSS hash-based signatures)": ("RFC 8554", "RFC 9858"),
 }
 
 
@@ -116,4 +118,33 @@ def test_every_named_in_file_names_the_standard():
         m = re.search(r"<sub>Named in: (.*?)</sub>", _section(heading))
         assert m, heading
         for f in re.findall(r"`([^`]+)`", m.group(1)):
-            assert term in (REPO / f).read_text(encoding="utf-8"), f"{heading}: {f} does not name {term}"
+            text = (REPO / f).read_text(encoding="utf-8")
+            for t in (term,) if isinstance(term, str) else term:
+                assert t in text, f"{heading}: {f} does not name {t}"
+
+
+def test_lms_acvp_vectors_are_named_and_not_called_validation():
+    sec = _section("RFC 8554 and RFC 9858 (LMS and HSS hash-based signatures)")
+    assert "test_lms_acvp.py" in sec and "ACVP-Server" in sec
+    assert "NOT CAVP-VALIDATED" in sec and "is not CAVP validation" in sec
+    assert "SHA-256/192 ONLY" in sec and "DOES NOT SIGN REPORTS" in sec
+
+
+def test_lms_rfc9858_vectors_are_named_with_their_scope():
+    sec = _section("RFC 8554 and RFC 9858 (LMS and HSS hash-based signatures)")
+    assert "test_lms_rfc9858.py" in sec and "tests/vectors/rfc9858_test_cases.json" in sec
+    assert "All 4 test cases of RFC 9858 Appendix A verify" in sec
+    assert "this module does not sign with the RFC 9858 sets" in sec
+    assert "other than these four and the two ACVP sets below" in sec
+    assert (REPO / "tests" / "test_lms_rfc9858.py").is_file()
+
+
+def test_the_issuance_log_section_states_its_scope():
+    sec = _section("C2SP tlog-tiles, tlog-checkpoint and signed-note; RFC 9162 Merkle trees")
+    flat = " ".join(sec.split())
+    assert "test_tlog.py" in flat and "No conformance suite" in flat
+    assert "NO PUBLISHED PROOF VECTORS OR CONFORMANCE SUITE RUN" in flat
+    assert "77f1b57d7aa25fcd2e51273166b6b2b0e74923b1" in flat
+    # the claim about other clients follows from the signed-note rules, and is labelled as untested
+    assert "REJECTS THE CHECKPOINTS (FROM THE SPECIFICATION, NOT TESTED)" in flat
+    assert "no such client was run" in flat

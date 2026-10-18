@@ -5,8 +5,9 @@ two test cases the HSS public key, the message and the HSS signature, concatenat
 them, and for test case 2 the two seeds and identifiers the appendix gives under "Test Case 2 Private Key"
 (derived with the procedure of Appendix A).
 
-What this backs: both signatures verify, test case 2 is reproduced byte for byte from its private keys, and a change
-to any byte of a public key, a message or a signature makes verification fail. It does not back NIST SP 800-208
+What this backs: both signatures verify, test case 2 is reproduced byte for byte from its private keys, and flipping
+the low bit of any one byte of a public key or a message, or of a sampled byte of a signature (each of the first 16
+and the last 16, and every 13th), makes verification fail. It does not back NIST SP 800-208
 validation, which this module does not have, and it says nothing about the signer that signs reports.
 """
 from __future__ import annotations

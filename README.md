@@ -37,11 +37,11 @@ The label names what was audited and is covered by the digest: pass ours to repr
 The tools need Python 3.11 or later and nothing else. The test suite needs `pytest`:
 
 ```bash
-python -m pytest -q      # 3326 tests, pytest only, exit 0
+python -m pytest -q      # 3424 tests, pytest only, exit 0
 ```
 
 Some tests skip where the machine lacks something, such as `jsonschema`. 27 more need the optional extras:
-run `pip install -e ".[test]"`, then re-run for 3353. A test asserts both counts.
+run `pip install -e ".[test]"`, then re-run for 3451. A test asserts both counts.
 
 The shipped package, `entrovouch/`, audits `CLEAN`. The demo tree, the test programs and the test workflow produce
 findings on purpose, and `cbom` and `key_provenance` report the package's own search strings (`cbom` gives
@@ -219,9 +219,35 @@ module; this key is a file. Each leaf signs once, so keep one copy of the key th
 pinned, a signature shows who issued a report and that it is unchanged. It says nothing about whether the verdict is
 correct. The full rules are in [docs/SIGNING.md](docs/SIGNING.md).
 
-`entrovouch.lms` verifies RFC 8554 LMS and HSS signatures, makes LMS signatures, and reproduces the RFC's published
-test vectors. It does not sign reports, and it is not validated under SP 800-208; what backs it is in
-[CONFORMANCE.md](CONFORMANCE.md).
+`entrovouch.lms` verifies RFC 8554 LMS and HSS signatures and the RFC 9858 parameter sets, makes LMS signatures with
+the RFC 8554 SHA-256 sets at heights 5 and 10, verifies both RFC 8554 Appendix F test cases and reproduces test
+case 2 byte for byte, verifies the 4 published test cases of RFC 9858 (SHA-256/192, SHAKE256/192 and SHAKE256/256),
+and gives the published answer on the 8 LMS sigVer vectors NIST publishes in its ACVP-Server repository. Running
+those vectors is not CAVP validation. It does not sign reports, and it is not validated under SP 800-208; what backs
+it is in [CONFORMANCE.md](CONFORMANCE.md).
+
+`entrovouch.tlog` keeps an issuance log: one line for each report the issuer enters, in a Merkle tree laid out as
+C2SP tlog-tiles describes, with checkpoints signed by a separate log key. It is append-only in one sense: the module
+never rewrites or removes a file a checkpoint covers and never signs a checkpoint smaller than, or inconsistent with,
+the last one; nothing stops someone with write access from replacing the directory. A report signed and never
+entered leaves no trace in it. A buyer holding a report, its proof bundle and the issuer's verifier key checks offline,
+with `python -m entrovouch.verify` (or `verify_report`), that the report is intact and signed under the root they pin,
+and with `verify_bundle(bundle, vkey, report=report)` that a checkpoint the log key signed includes an entry naming
+that report; the `report` argument is what makes it check that the entry names the report. Pin the log's origin and
+verifier key through a channel you trust, as you pin the report root, and compare the origin `verify_bundle` returns
+with the one you pinned. The log has no witnesses: an issuer can show different buyers different histories, and only
+buyers who compare checkpoints, or ask for consistency proofs between them, can detect it. `detect_fork` reports two
+checkpoints of one size signed by the log key with different roots: the key signed two trees that cannot both be
+true, which happens when the issuer keeps two logs, when the log key leaked or was copied, and when the log directory
+was restored from a copy older than a checkpoint already handed out and then appended to. Checkpoints of different
+sizes are consistent when a consistency proof between them verifies; with no proof, or one that fails, it says
+nothing. A checkpoint of size 0 is consistent with every checkpoint and gives `False` without a proof, and two
+checkpoints naming different origins raise `TlogError`; the full rules are in [docs/SIGNING.md](docs/SIGNING.md). A
+log key of height h (10 by default, at most 16) signs at most 2^h checkpoints, the first of them the empty one; after
+that the log takes no more entries, and a new key starts a new log that buyers pin again. The
+checkpoints use this package's signer: a signed-note client that does not implement its signature type ignores the
+signature and rejects the checkpoint (this follows from the signed-note rules; no such client was run), so checking
+them needs this tool. The rules are in [docs/SIGNING.md](docs/SIGNING.md).
 
 ### The publisher's public root
 

@@ -1,6 +1,6 @@
 # CONFORMANCE: what this project claims about the standards it names
 
-**Last verified 2026-10-15.** Regenerate when the answers change.
+**Last verified 2026-10-17.** Regenerate when the answers change.
 
 > **Naming a standard is a CHECKABLE claim.** A hostile reader can test it in an afternoon
 > using free published vectors, which makes it among the first things checked and the most
@@ -124,24 +124,75 @@ restored key file can reuse a one-time leaf, and nothing in a signature reveals 
 <sub>Named in: `README.md`, `docs/SIGNING.md`, `entrovouch/signer.py`</sub>
 
 
-### RFC 8554 (LMS and HSS hash-based signatures)
+### RFC 8554 and RFC 9858 (LMS and HSS hash-based signatures)
 
-**VERIFIED AGAINST THE RFC'S PUBLISHED TEST VECTORS ONLY. NOT NIST SP 800-208 VALIDATED. IT DOES NOT SIGN REPORTS.**
+**VERIFIED AGAINST THE PUBLISHED TEST VECTORS OF RFC 8554 AND RFC 9858 AND THE 8 LMS SIGVER VECTORS NIST PUBLISHES
+IN ACVP-SERVER (SHA-256/192 ONLY). NOT CAVP-VALIDATED. NOT NIST SP 800-208 VALIDATED. IT DOES NOT SIGN REPORTS.**
 `entrovouch/lms.py` verifies LMS and HSS signatures for the SHA-256 parameter sets RFC 8554 defines (LM-OTS W1, W2,
-W4 and W8; LMS heights 5, 10, 15, 20 and 25) and signs with an LMS key derived from a seed as RFC 8554 Appendix A describes
-(heights 5 and 10). Both test cases of RFC 8554 Appendix F verify; test case 2 is reproduced byte for byte from the
-private keys the appendix gives, with its published randomizers; and a test fails if one byte of a published public
-key, message or signature changes. The vectors are in `tests/vectors/rfc8554_appendix_f.json`, transcribed from
-Appendix F. Test: `tests/test_lms_rfc8554.py`.
+W4 and W8; LMS heights 5, 10, 15, 20 and 25) and for the parameter sets RFC 9858 adds (SHA-256/192, SHAKE256/256 and
+SHAKE256/192, the same W values and heights), and signs with an LMS key derived from a seed as RFC 8554 Appendix A
+describes (the RFC 8554 SHA-256 sets, heights 5 and 10; the RFC 9858 sets are verified only). The verifier refuses a
+public key whose tree and one-time key types use different hashes. Both test cases of RFC 8554 Appendix F verify;
+test case 2 is reproduced byte for byte from the private keys the appendix gives, with its published randomizers; and
+a test flips the low bit of each byte of each published public key and message, one byte at a time, and of a sample
+of signature bytes (each of the first 16 and the last 16, and every 13th), and asserts that every such change fails
+verification. The vectors are in `tests/vectors/rfc8554_appendix_f.json`,
+transcribed from Appendix F. Test: `tests/test_lms_rfc8554.py`.
+
+All 4 test cases of RFC 9858 Appendix A verify: A.1, `LMS_SHA256_M24_H5` with `LMOTS_SHA256_N24_W8`; A.2,
+`LMS_SHAKE_M24_H5` with `LMOTS_SHAKE_N24_W8`; A.3, `LMS_SHAKE_M32_H5` with `LMOTS_SHAKE_N32_W8`; A.4,
+`LMS_SHA256_M24_H20` with `LMOTS_SHA256_N24_W4`. That is at least one case for each hash RFC 9858 adds
+(SHA-256/192, SHAKE256/192 and SHAKE256/256). A test flips the low bit of each byte of each published public key and
+message, one byte at a time, and of a sample of signature bytes (each of the first 16 and the last 16, and every
+11th), and asserts that every such change fails verification. The appendix gives each case's private key, but this module does not sign with the RFC 9858 sets,
+so the published signatures are verified, not reproduced. The vectors are in `tests/vectors/rfc9858_test_cases.json`,
+transcribed from the RFC text (https://www.rfc-editor.org/rfc/rfc9858.txt). Test: `tests/test_lms_rfc9858.py`. No
+published vector has been run for an RFC 9858 parameter set other than these four and the two ACVP sets below.
+
+It gives the published answer on all 8 LMS sigVer vectors NIST publishes in its ACVP-Server repository
+(`gen-val/json-files/LMS-sigVer-1.0/internalProjection.json` at commit `2972def23bf9f3680c2c531561ed9bdd0f1086ad`,
+vendored unchanged as `tests/vectors/acvp_lms_sigver_1_0_internalProjection.json` and pinned by SHA-256). They cover
+two SHA-256/192 sets, `LMS_SHA256_M24_H5` with `LMOTS_SHA256_N24_W1` and `LMS_SHA256_M24_H10` with
+`LMOTS_SHA256_N24_W2`, and only 2 of the 8 are valid signatures, so the test also asserts that both of those verify:
+a verifier that refused everything would agree with 6 of 8. Running NIST's published vectors is not CAVP validation,
+and no CAVP validation has been run. Test: `tests/test_lms_acvp.py`.
 
 SP 800-208 permits LMS signing only inside a hardware cryptographic module that keeps the state and never exports
 the key. This module keeps its state in a file: it writes the next unused leaf before a signature is computed and
 refuses a used leaf, and a state file that moved backwards while the key is loaded, but a copied or restored file can
-still bring a used leaf back. No CAVP or other validation has been run. The report signer is unchanged: reports are signed with the
-Lamport-Merkle construction above, which claims conformance to no standard, and nothing in the report format uses
-this module.
+still bring a used leaf back. No CAVP or other validation has been run. Reports are signed with the Lamport-Merkle
+construction above, which claims conformance to no standard, and nothing in the report format uses this module.
 
 <sub>Named in: `README.md`, `entrovouch/lms.py`, `docs/SIGNING.md`</sub>
+
+
+### C2SP tlog-tiles, tlog-checkpoint and signed-note; RFC 9162 Merkle trees
+
+**TREE HASHES CHECKED AGAINST PUBLISHED TEST ROOTS. NO PUBLISHED PROOF VECTORS OR CONFORMANCE SUITE RUN. A
+SIGNED-NOTE CLIENT THAT DOES NOT IMPLEMENT THIS SIGNATURE TYPE REJECTS THE CHECKPOINTS (FROM THE SPECIFICATION, NOT
+TESTED).** `entrovouch/tlog.py` keeps the issuance log. Its tree is hashed as RFC 9162 Section 2.1.1 defines. Its
+inclusion proofs are generated and verified as Section 2.1.3 describes, and its consistency proofs as Section 2.1.4
+describes for 0 < old size < new size; at the boundaries (equal sizes, an old size of 0), where Section 2.1.4 defines
+no proof, the rules are the ones the `verify_consistency` docstring states. The roots it computes for trees of 1 to 8
+entries equal the RFC 6962 test roots the transparency-dev Merkle library publishes in `testonly/constants.go`, as of
+commit `77f1b57d7aa25fcd2e51273166b6b2b0e74923b1` (2022-04-25, the file's last change; read 2026-10-17), and the empty
+tree's root is SHA-256 of the empty string as Section 2.1.1 defines it. No published inclusion or consistency proof
+vectors have been run: every proof for every index at every size from 1 to 300 and for every pair of sizes up to 40
+is compared with a reference written in the test from the RFC's definitions, and proofs for trees of up to 8 entries
+are also verified against the published roots. The directory follows C2SP tlog-tiles (tiles of height 8, the
+`x`-prefixed path groups, partial tiles at `.p/<W>`, entry bundles with big-endian uint16 length prefixes) and the
+checkpoint follows C2SP tlog-checkpoint and signed-note. No conformance suite for any C2SP specification has been
+run. Test: `tests/test_tlog.py`.
+
+The checkpoint is signed with this package's signer, which claims conformance to no standard. signed-note reserves the
+signature type byte 0xff for types it assigns no identifier and recommends following it with a longer identifier
+unlikely to collide; this key is 0xff followed by a 32-byte algorithm identifier. signed-note defines key encodings
+only for its own types, requires verifiers to ignore signatures from unknown keys, and requires a client to reject a
+note on which no signature from a known key verifies. So a signed-note client that does not implement this signature
+type cannot be given this key, ignores the signature, and rejects the checkpoint. This follows from the signed-note
+rules (c2sp.org/signed-note, read 2026-10-17); no such client was run. Checking these checkpoints needs this tool.
+
+<sub>Named in: `README.md`, `entrovouch/tlog.py`, `docs/SIGNING.md`</sub>
 
 
 ### FIPS 203 / 204 / 205 (ML-KEM, ML-DSA, SLH-DSA)
@@ -200,11 +251,12 @@ purl project's published test data is not run, so conformance is not claimed.
   argument is that you should not have to. Anything not reproducible from this checkout is not
   cited here.
 
-Checked by `tests/test_conformance_claims.py` for the ten sections it names: for eight of them, that they carry their
-status words (VALIDATED, NOT CLAIMED, DETECTOR TOKENS ONLY and the rest), every file a "Named in" line points to
-names the standard, and for CSAF the named test file exists. Nothing in it checks that a section's test
-passes, and a section added later, or a standard newly named in the code, is not checked by it; keeping
-this file right is part of review. The RFC 8554 section is checked by `tests/test_lms_rfc8554.py`.
+Checked by `tests/test_conformance_claims.py` for the twelve sections it names: for each, that every file its "Named
+in" line points to names the standard; for eleven of them (all but in-toto Statement), that they carry their status
+words (VALIDATED, NOT CLAIMED, DETECTOR TOKENS ONLY and the rest); and for CSAF and RFC 9858 that the named test file
+exists. Nothing in it checks that a section's test passes, and a section added later, or a standard newly named in
+the code, is not checked by it; keeping this file right is part of review. The RFC 8554 and RFC 9858 section is also
+checked by `tests/test_lms_rfc8554.py`.
 
 ## Cited, not followed
 

@@ -44,8 +44,10 @@ master seed requires inverting SHA3-256.
 
 ONE-TIME DISCIPLINE
 -------------------
-Signing twice under one leaf index leaks, on average, half of each Lamport key
-pair and makes existential forgery practical. `MerkleSigner` therefore persists
+Signing twice under one leaf index reveals, on average, the second secret value
+of about half of the leaf's 256 Lamport pairs, which weakens it toward forgery
+(about 2^128 work after one reuse); each further signature reveals more, and a
+few make existential forgery practical. `MerkleSigner` therefore persists
 its used-index high-water mark alongside the seed and REFUSES to reuse an
 index (`KeyExhausted` / `IndexReuse`). This is a hard error, never a warning.
 """
@@ -360,7 +362,8 @@ class MerkleSigner:
         # RESERVE THE INDEX ON DISK BEFORE REVEALING ANY SECRET MATERIAL.
         # If the signature were returned first, a crash, a full disk or a kill before the
         # index was recorded would let the next process reuse the leaf, and reuse of a
-        # Lamport leaf leaks half of each key pair and makes forgery practical. NIST
+        # Lamport leaf reveals about half of its unrevealed secret values and weakens
+        # it toward forgery; a few reuses make forgery practical. NIST
         # SP 800-208 treats this crash-consistency requirement as the defining hazard of
         # stateful hash-based signatures, not an implementation detail. This scheme
         # claims no conformance to SP 800-208: the key is a file, and exportable.

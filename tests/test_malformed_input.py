@@ -9,6 +9,10 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
+import re
+import subprocess
+import sys
 from dataclasses import asdict
 from pathlib import Path
 
@@ -23,11 +27,95 @@ from entrovouch.signer import MerkleSigner, SignerError, verify_signature
 REPO = Path(__file__).resolve().parents[1]
 SAMPLE = REPO / "examples" / "sample_service"
 SIGNER = MerkleSigner(seed=b"\x05" * 32, height=2, path=None)
+_SIGNED: list = []
+
+
+def _signed_report() -> dict:
+    """The sample report, signed once per process.
+
+    pytest rebuilds a module-scoped fixture each time a run re-enters the module, so under a shuffled order a fixture
+    that signed on every setup would sign again on every re-entry, and the fifth would exhaust SIGNER's four one-time
+    keys. Signing a fresh body
+    with a rebuilt signer would reuse a one-time key on a different message (`scanned_at_utc` differs per scan), so the
+    report is signed once and every setup gets its own copy."""
+    if not _SIGNED:
+        _SIGNED.append(asdict(audit(SAMPLE, label="entrovouch/examples/sample_service", signer=SIGNER)))
+    return copy.deepcopy(_SIGNED[0])
 
 
 @pytest.fixture(scope="module")
 def report():
-    return asdict(audit(SAMPLE, label="entrovouch/examples/sample_service", signer=SIGNER))
+    return _signed_report()
+
+
+def test_report_fixture_survives_reentry():
+    # Five setups, as a shuffled run produces: each copy verifies, and only one one-time key is spent.
+    copies = [_signed_report() for _ in range(5)]
+    for c in copies:
+        assert verify_report(c, expected_root=SIGNER.public_root) == (True, "ATTESTED")
+    assert SIGNER.next_index == 1
+    copies[0]["verdict"] = "tampered"
+    assert _signed_report()["verdict"] != "tampered", "each setup must get its own copy"
+
+
+_ORDER_PLUGIN = """
+import os
+import random
+
+
+def pytest_collection_modifyitems(session, config, items):
+    # Leave out the re-entry tests by test name (`-k` would also match the temporary folder's name).
+    items[:] = [i for i in items if "reentr" not in i.name]
+    mode = os.environ["ENTROVOUCH_TEST_ORDER"]
+    mine = [i for i in items if "test_malformed_input" in i.nodeid]
+    other = [i for i in items if "test_malformed_input" not in i.nodeid]
+    if mode == "interleave":
+        out = []
+        while mine or other:
+            if mine:
+                out.append(mine.pop(0))
+            if other:
+                out.append(other.pop(0))
+    elif mode == "reverse":
+        out = mine[::-1] + other
+    else:
+        out = mine + other
+        random.Random(int(mode.split(":")[1])).shuffle(out)
+    items[:] = out
+"""
+
+
+def _run_this_file(tmp_path, order: str):
+    (tmp_path / "order_plugin.py").write_text(_ORDER_PLUGIN, encoding="utf-8")
+    other = tmp_path / "test_other_module.py"
+    other.write_text("".join(f"def test_other_{i}():\n    pass\n\n\n" for i in range(20)), encoding="utf-8")
+    env = dict(os.environ, PYTHONPATH=str(tmp_path) + os.pathsep + os.environ.get("PYTHONPATH", ""),
+               PYTHONDONTWRITEBYTECODE="1", ENTROVOUCH_TEST_ORDER=order)
+    r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "order_plugin", "-p", "no:cacheprovider",
+                        "--setup-show", str(Path(__file__).resolve()), str(other)],
+                       cwd=REPO, env=env, capture_output=True, text=True, timeout=900)
+    return r, r.stdout + r.stderr
+
+
+def test_report_fixture_reentry_through_pytest(tmp_path):
+    # The test above calls the helper; this one makes pytest itself set the module fixture up again and again, as a
+    # shuffled run does: this file's tests alternate with another module's, so every test re-enters the module.
+    r, out = _run_this_file(tmp_path, "interleave")
+    setups = len(re.findall(r"SETUP\s+M report\b", out))  # pytest's own setup report, not a counter of ours
+    assert "KeyExhausted" not in out, "a fixture setup signed again and ran out of one-time keys:\n" + out[-3000:]
+    assert r.returncode == 0, out[-3000:]
+    assert setups >= 5, f"the fixture was set up {setups} times, not five, so this run proves nothing"
+
+
+def test_this_file_passes_reversed_and_shuffled_not_only_on_reentry(tmp_path):
+    # Order independence within this file: reversed, and shuffled with this file's tests mixed into another module's.
+    # The shuffle seed is drawn fresh on every run and printed on failure, so a failure can be replayed. This covers
+    # this file only, not the whole suite.
+    import secrets
+    seed = secrets.randbits(32)
+    for order in ("reverse", f"shuffle:{seed}"):
+        r, out = _run_this_file(tmp_path, order)
+        assert r.returncode == 0, f"order {order}:\n" + out[-3000:]
 
 
 @pytest.fixture(scope="module")
