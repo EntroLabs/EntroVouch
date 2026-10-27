@@ -1067,6 +1067,9 @@ def _json_line(places: dict, var: str, value: str) -> int:
 
 # archives this tool does not open, by their first bytes: 7z, rar, zstd, lz4, compress (.Z)
 _OTHER_ARCHIVE_PREFIXES = (b"7z\xbc\xaf\x27\x1c", b"Rar!", b"\x28\xb5\x2f\xfd", b"\x04\x22\x4d\x18", b"\x1f\x9d")
+# zip compression methods this tool opens: stored (0), deflate (8), bzip2 (12), lzma (14). Any other member, zstd (93)
+# included, is left unread and the archive is reported as not fully read, on every Python.
+_ZIP_METHODS_OPENED = frozenset({0, 8, 12, 14})
 _ARCHIVE_MEMBER_LIMIT = 16 << 20       # bytes read from one member
 _ARCHIVE_TOTAL_LIMIT = 64 << 20        # bytes read from one archive
 
@@ -1164,6 +1167,11 @@ def _search_container(data: bytes, rel: str, where: str, depth: int, state: dict
             with zipfile.ZipFile(io.BytesIO(data)) as zf:
                 for info in zf.infolist():
                     if info.is_dir():
+                        continue
+                    if info.compress_type not in _ZIP_METHODS_OPENED:
+                        # Python 3.14 opens a zstd member (method 93) through the libzstd it bundles; this tool reads
+                        # no zstd, as it reads no zstd stream below, so such a member is left unread and named so
+                        state["whole"] = False
                         continue
                     if state["budget"] <= 0:
                         state["whole"] = False
@@ -1660,7 +1668,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("target", type=Path)
     ap.add_argument("--json", type=Path, default=None, help="write the JSON report")
     ap.add_argument("--md", type=Path, default=None, help="write the markdown report")
-    ap.add_argument("--label", default=None)
+    ap.add_argument("--label", default=None,
+                    help="the subject name written into the report instead of the scanned path")
     args = ap.parse_args(argv)
     try:  # a non-ASCII path in a report must not crash a console or a redirected stdout on Windows
         sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")

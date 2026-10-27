@@ -343,6 +343,161 @@ STDLIB_NET_CALLS = {
 # Programs that run the program named after them: the argv that matters starts later.
 ARGV_WRAPPERS = {"env", "sudo", "doas", "nohup", "timeout", "nice", "ionice", "time", "stdbuf", "setsid",
                  "xargs", "busybox", "command", "exec", "chroot", "unbuffer", "watch", "strace"}
+# Options of a wrapper that take the next word as their value, as each program's manual documents them
+# (`sudo -u root curl`, `env -u NAME curl`, `timeout -s KILL 5 curl`): the value is not the program.
+_WRAPPER_VALUE_OPTIONS = {
+    "sudo": {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-R", "-t", "-U", "-T", "-a", "-c", "--user", "--group",
+             "--chdir", "--host", "--chroot", "--prompt", "--role", "--type", "--other-user", "--command-timeout",
+             "--close-from", "--auth-type", "--login-class"},
+    "doas": {"-u", "-C", "-a"}, "env": {"-u", "-C", "-S", "-a", "--unset", "--chdir", "--argv0"}, "timeout": {"-k", "-s", "--signal",
+    "--kill-after"}, "nice": {"-n", "--adjustment"},
+    "stdbuf": {"-i", "-o", "-e", "--input", "--output", "--error"},
+    "xargs": {"-a", "-d", "-E", "-I", "-L", "-n", "-P", "-s", "--arg-file", "--delimiter", "--max-args",
+              "--max-procs", "--max-chars", "--process-slot-var"},
+    "watch": {"-n", "--interval"},
+    "strace": {"-e", "-o", "-p", "-s", "-u", "-P", "-a", "-b", "-E", "-I", "-O", "-S", "-U", "-X", "--output",
+               "--trace", "--attach", "--user", "--string-limit", "--columns", "--env", "--trace-path",
+               "--summary-sort-by", "--summary-columns", "--const-print-style", "--detach-on", "--interruptible",
+               "--overhead"},
+    "exec": {"-a"}, "ionice": {"-c", "-n", "-p", "-P", "-u", "--class", "--classdata", "--pid", "--pgid", "--uid"},
+    "time": {"-o", "-f", "--output", "--format"}, "chroot": {"--userspec", "--groups"},
+}
+# Options whose meaning depends on what follows: `sudo -h` is help alone and a host before a command (listed above,
+# so the principal reading takes the host). The other way is read too (`_program_parses`). (`watch -d` takes its
+# optional value only attached, `-d=permanent`, so `watch -d cmd` runs `cmd`: it is a flag below.)
+_WRAPPER_OPTIONAL_VALUE = {"sudo": {"-h"}}
+# Options with which the wrapper runs no program: the words after them are not a command (`sudo -l cmd` lists whether
+# cmd is allowed, `sudo -e file` edits a file, `command -v name` describes a name, `ionice -p PID` sets a process).
+_WRAPPER_NO_RUN = {"sudo": {"-l", "--list", "-e", "--edit", "-V", "--version", "-K", "--remove-timestamp", "-v",
+                            "--validate", "--help"},
+                   "command": {"-v", "-V"}, "ionice": {"-p", "-P", "-u", "--pid", "--pgid", "--uid", "-h", "--help",
+                                                     "-V", "--version"},
+                   "doas": {"-C", "-L"}, "time": {"-V", "--version", "--help"},
+                   # env refuses a command after `-0`; the GNU tools print their help or version and run nothing
+                   "env": {"-0", "--null", "--help", "--version"}, "timeout": {"--help", "--version"},
+                   "nice": {"--help", "--version"}, "nohup": {"--help", "--version"}, "stdbuf": {"--help", "--version"},
+                   "chroot": {"--help", "--version"}, "xargs": {"--help", "--version"},
+                   "setsid": {"-h", "--help", "-V", "--version"}, "strace": {"-h", "-V"},
+                   "watch": {"-h", "--help", "-v", "--version"}}
+# Options each wrapper's manual documents as taking no value. With `_WRAPPER_VALUE_OPTIONS` they tell a word the line
+# does not spell out apart: followed by one of its wrapper's own options, it is an option too; otherwise it is the
+# program (`timeout 30 tool -d URL`).
+_WRAPPER_FLAGS = {
+    "sudo": {"-A", "-B", "-b", "-E", "-e", "-H", "-i", "-K", "-k", "-l", "-N", "-n", "-P", "-S", "-s", "-V", "-v",
+             "--askpass", "--bell", "--background", "--preserve-env", "--edit", "--set-home", "--login",
+             "--remove-timestamp", "--reset-timestamp", "--list", "--no-update", "--non-interactive",
+             "--preserve-groups", "--stdin", "--shell", "--version", "--validate"},
+    "doas": {"-n", "-s", "-L"}, "env": {"-i", "-0", "-v", "--ignore-environment", "--null", "--debug",
+                                        "--block-signal", "--default-signal", "--ignore-signal",
+                                        "--list-signal-handling"},
+    "timeout": {"-v", "-f", "-p", "--foreground", "--preserve-status", "--verbose"}, "ionice": {"-t", "--ignore"},
+    "xargs": {"-0", "-r", "-t", "-x", "-p", "-o", "-i", "-e", "-l", "--null", "--no-run-if-empty", "--verbose",
+              "--exit", "--interactive", "--open-tty"},
+    "watch": {"-t", "-b", "-e", "-g", "-c", "-x", "-p", "-w", "-d", "--no-title", "--beep", "--errexit",
+              "--chgexit", "--color", "--exec", "--precise", "--no-wrap", "--differences"},
+    "strace": {"-f", "-ff", "-c", "-C", "-T", "-t", "-tt", "-ttt", "-v", "-V", "-y", "-yy", "-q", "-qq", "-r", "-w",
+               "-x", "-xx", "-k", "-i", "-D", "-Z", "-z"},
+    "time": {"-p", "-v", "-a", "-q", "--portability", "--verbose", "--append", "--quiet"},
+    "chroot": {"--skip-chdir"}, "setsid": {"-c", "-f", "-w", "--ctty", "--fork", "--wait"}, "unbuffer": {"-p"},
+    "command": {"-p", "-v", "-V"}, "exec": {"-c", "-l"},
+}
+# The wrappers that read long options as getopt_long does, taking any unambiguous abbreviation (`--k` for
+# `--kill-after`); the long options each documents, for that reading.
+_WRAPPER_GETOPT_LONG = {"sudo", "env", "timeout", "nice", "ionice", "time", "stdbuf", "setsid", "xargs", "chroot",
+                        "watch", "strace", "nohup"}
+_WRAPPER_LONG_EXTRA = {"env": {"--split-string", "--ignore-environment", "--unset", "--chdir", "--argv0"},
+                       "ionice": {"--class", "--classdata", "--pid", "--pgid", "--uid", "--ignore"},
+                       "watch": {"--interval"}}
+
+
+def _wrapper_longs(name: str) -> set:
+    return {o for table in (_WRAPPER_VALUE_OPTIONS, _WRAPPER_FLAGS, _WRAPPER_NO_RUN, _WRAPPER_LONG_EXTRA)
+            for o in table.get(name, ()) if o.startswith("--")}
+
+
+def _full_long(name: str, word: str) -> str:
+    """A wrapper's long option as getopt_long reads it: an unambiguous abbreviation is the option it abbreviates
+    (`timeout --kill 1` is `--kill-after 1`, `sudo --us root` is `--user root`). Any other word is returned as is."""
+    if name not in _WRAPPER_GETOPT_LONG or not word.startswith("--") or word == "--" or _ARGV_VALUE in word:
+        return word
+    head, eq, value = word.partition("=")
+    longs = _wrapper_longs(name)
+    if head in longs:
+        return word
+    hits = [o for o in longs if o.startswith(head)]
+    return hits[0] + eq + value if len(hits) == 1 else word
+
+
+def _no_run_option(name: str, word: str) -> bool:
+    """An option with which the wrapper runs no program: listed in `_WRAPPER_NO_RUN`, abbreviated (`sudo --li`), or a
+    letter of a short-option cluster read as getopt reads it (`sudo -lu root`, `-nl`, `command -pv`, `ionice -tp 1`;
+    a letter that takes a value ends the cluster)."""
+    no_run = _WRAPPER_NO_RUN.get(name, ())
+    if not no_run or _ARGV_VALUE in word:
+        return False
+    word = _full_long(name, word)
+    if word.split("=", 1)[0] in no_run:
+        return True
+    if len(word) > 2 and word[0] == "-" and word[1] != "-":
+        takes = _WRAPPER_VALUE_OPTIONS.get(name, set())
+        for letter in word[1:]:
+            if "-" + letter in no_run:
+                return True
+            if "-" + letter in takes:
+                return False
+    return False
+
+
+# How many wrappers in a row are read through (`sudo env nice timeout 5 nohup curl`).
+_WRAPPER_DEPTH = 32
+# Wrappers whose first word after their options is an argument of their own, not the program (`chroot NEWROOT cmd`,
+# `timeout DURATION cmd`).
+_WRAPPER_POSITIONALS = {"chroot": 1, "timeout": 1}
+# What a wrapper's own argument must look like, where its manual says (`timeout DURATION`: a number with an optional
+# unit); a word that does not is refused (`timeout git fetch`: "invalid time interval"), and nothing runs.
+_DURATION_NUMBER_RE = re.compile(
+    r"[ \t\n\v\f\r]*([+-]?(?:0[xX](?:[0-9a-fA-F]+\.?[0-9a-fA-F]*|\.[0-9a-fA-F]+)(?:[pP][+-]?\d+)?"
+    r"|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|(?i:inf(?:inity)?|nan)))([smhd]?)")
+
+
+class _DurationForm:
+    """`timeout DURATION` as GNU timeout 8.32 reads it (cl_strtod, then a unit): leading whitespace, a sign, a decimal or
+    hexadecimal number (`0x5`, `0x1p3`), `inf`, then `s`, `m`, `h` or `d`; refused when it is negative or not a number
+    (`-0` is zero, and accepted). Measured: `timeout -- -0 echo`, `timeout +5 echo`, `timeout 0x5 echo` and
+    `timeout " 5" echo` run; `timeout "5 " echo`, `timeout 5S echo` (the unit is lower case) and `timeout git` do
+    not."""
+
+    @staticmethod
+    def fullmatch(word: str) -> bool:
+        m = _DURATION_NUMBER_RE.fullmatch(word)
+        if not m:
+            return False
+        num = m.group(1)
+        try:
+            body = num.lstrip("+-")
+            value = float.fromhex(body) if body[:2].lower() == "0x" else float(body)
+        except ValueError:
+            return False
+        except OverflowError:
+            # `0x1p99999`: cl_strtod gives ERANGE and HUGE_VAL, which timeout accepts (`timeout 0x1p99999 echo`
+            # runs, measured on 8.32); a negative one is refused like any negative
+            value = float("inf")
+        if value != value:                       # nan
+            return False
+        return not (num.startswith("-") and value != 0)
+
+
+_WRAPPER_POSITIONAL_FORM = {"timeout": _DurationForm}
+_DURATION_RE = re.compile(r"[\d.]+[smhd]?")
+
+
+def _duration_like(name: str, word: str) -> bool:
+    """A number in a wrapper's own-argument place, as that wrapper reads one (`timeout`: `_DurationForm`)."""
+    form = _WRAPPER_POSITIONAL_FORM.get(name)
+    return bool(form.fullmatch(word)) if form is not None else bool(_DURATION_RE.fullmatch(word))
+# Options whose value is optional and, when given, attached only (`xargs -i[replace-str]`, `watch -d[=permanent]`):
+# a word that starts with one of them never takes the next word.
+_WRAPPER_ATTACHED_OPTIONAL = {"xargs": {"-i", "-l", "-e"}, "watch": {"-d"}}
 FORBIDDEN_GIT_SUBCOMMANDS = {"fetch", "pull", "push", "clone", "remote", "submodule", "ls-remote", "send-email",
                              "imap-send"}
 # `git remote` subcommands that contact the remote; the rest read or edit local configuration.
@@ -892,7 +1047,9 @@ SPAWN_CALLERS = {
     "posix_spawn", "posix_spawnp", "create_subprocess_exec", "create_subprocess_shell", "spawn", "startfile",
 }
 SHELL_INTERPRETERS = {"bash", "sh", "zsh", "dash", "ksh", "fish", "cmd", "powershell", "pwsh"}
-_PYTHON_EXE_RE = re.compile(r"^(?:python[0-9.]*w?|py|pyw|pypy[0-9]*|ipython[0-9]*)$")
+# `python3.14t` (free-threaded), `pythonw3.14`, `python3-dbg` / `python3.12d` (debug builds), `pypy3.10`, `graalpy`
+_PYTHON_EXE_RE = re.compile(
+    r"^(?:pythonw?[0-9.]*[tdw]?(?:-dbg|_d)?|py|pyw|pypy[0-9.]*|ipython[0-9]*|graalpy[0-9.]*)$")
 # Words in a shell string that reach the network: binaries, and PowerShell's download cmdlets.
 _SHELL_NET_WORD_RE = re.compile(
     # .NET names are written after a dot: `(New-Object System.Net.WebClient).DownloadFile(...)`
@@ -1301,9 +1458,21 @@ def _strip_origin_only_urls(line: str) -> str:
 
 TEXT_EXTS = {".py", ".pyw"}
 # Path-configuration files. Python's `site` module reads every `*.pth` in a site
-# directory at interpreter start and EXECUTES each line that begins with `import`.
+# directory at interpreter start and EXECUTES each line that begins with `import`
+# (Python 3.15 strips the line first, so an indented one runs too).
 # Those lines are Python source in a file that is not named like Python source.
 PTH_EXTS = {".pth"}
+# Start-up entry-point files (PEP 829, Python 3.15): `site` CALLS each `pkg.mod:callable`
+# line of a `*.start` file in a site directory at interpreter start.
+START_EXTS = {".start"}
+# `site` matches `.start` case-sensitively on every system and resolves names as Python identifiers, which may begin
+# with any letter, not only an ASCII one (`pkgutil.resolve_name(strict=True)`).
+_START_ENTRY_RE = re.compile(r"[^\W\d]\w*(?:\.[^\W\d]\w*)*:[^\W\d]\w*(?:\.[^\W\d]\w*)*")
+
+
+def _is_start_file(path) -> bool:
+    """A file `site` reads as start-up entry points: its name ends in `.start` exactly, in that case."""
+    return _reads.suffix_of(path) == ".start"
 _PTH_SNIFF_BYTES = 8192
 NOTEBOOK_EXTS = {".ipynb"}
 # Markup, stylesheets and templates: checked by pattern for external references.
@@ -1482,7 +1651,10 @@ def _js_net_calls(code: str) -> tuple[bool, bool]:
     """(a network call is on the line, only a method named `fetch` on some object is).
 
     `fetch(url)` and `window.fetch(url)` are the browser's fetch. `parser.fetch()` is a method of whatever `parser`
-    is. `fetch(e) { ... }` and `function fetch(` define a function; nothing is called there.
+    is. `fetch(e) { ... }` and `function fetch(` define a function; nothing is called there. A `fetch` method on
+    an object the file builds itself is reported like any other: deciding that an object's `fetch` is still its
+    own at the call takes scope and data-flow analysis this reader does not do, and a wrong guess hides the
+    browser's fetch.
     """
     strong = method = False
     for m in _JS_NET_CALL_RE.finditer(code):
@@ -2157,7 +2329,8 @@ def _js_expression_findings(raw: str, src: str, rel: str, created: re.Pattern | 
     # Expression-level. Whether a line CALLS something is read from the code with string
     # contents blanked; the bracketed form (`window["fetch"]`) names the call in a string,
     # so that one is read from the text with strings intact.
-    code_lines = _js_code_only(raw).splitlines()
+    code_text = _js_code_only(raw)
+    code_lines = code_text.splitlines()
     for i, line in enumerate(src.splitlines(), 1):
         code = code_lines[i - 1] if i <= len(code_lines) else line
         strong, method_fetch = _js_net_calls(code)
@@ -2304,6 +2477,11 @@ class AuditReport:
     # The same for JavaScript and TypeScript: bare package specifiers that are on none of the
     # lists and are not Node's own modules.
     unlisted_js_imports: list = field(default_factory=list)
+    # Programs the Python in this tree starts (through subprocess, os.exec* and os.spawn*, pty, asyncio or a task
+    # runner) whose name is spelled out, or bound once to a literal, and that are on none of this tool's lists: the
+    # tool has no rule for what they do, and says so by naming them. Part of the reproducible body; written into a
+    # report only when it names something, so a report on a tree that starts no such program reads as before.
+    unlisted_programs: list = field(default_factory=list)
     # The Python that parsed the tree, as major.minor. A file written in syntax newer than
     # this is `unparseable-source`, so two audits of such a tree under different Pythons can
     # differ. Issuance metadata: inside the signed body, outside the findings digest.
@@ -2414,6 +2592,18 @@ _DB_HOST_ELSEWHERE: contextvars.ContextVar = contextvars.ContextVar("entrovouch_
 # During an audit: (the set unknown Python imports are added to, the tree's own module names), for Python a check finds
 # inside another file (a script's `python -c`, a here-document) and reads without the caller's set
 _UNLISTED_SINK: contextvars.ContextVar = contextvars.ContextVar("entrovouch_unlisted_sink", default=None)
+# where the programs started from Python that are on no list are collected while one tree is audited
+_PROGRAM_SINK: contextvars.ContextVar = contextvars.ContextVar("entrovouch_program_sink", default=None)
+# The findings of each code string handed to a child interpreter, for one audit: code bound once and run on many lines
+# (or nested in itself) is read once.
+_CHILD_CODE_CACHE: contextvars.ContextVar = contextvars.ContextVar("entrovouch_child_code", default=None)
+# For the Python file being read: (names bound to the sys module, names bound to `sys.executable` by a from-import,
+# names bound to the os module), so `s.executable`, `from sys import executable` and `os.sys.executable` are Python
+_SYS_EXE_DEFAULT = (frozenset({"sys"}), frozenset(), frozenset({"os"}))
+_SYS_EXE_NAMES: contextvars.ContextVar = contextvars.ContextVar("entrovouch_sys_exe_names", default=_SYS_EXE_DEFAULT)
+# The argv being read with its f-string templates in place (`_argv_findings`), so the written parts of a `-c` string
+# built with an f-string can be read
+_ARGV_MARKED: contextvars.ContextVar = contextvars.ContextVar("entrovouch_argv_marked", default=None)
 # During an audit: the files a GitLab pipeline includes by path, which are pipeline files whatever their names
 _CI_INCLUDED: contextvars.ContextVar = contextvars.ContextVar("entrovouch_ci_included", default=frozenset())
 # During an audit: the dotted names of the modules and packages the tree holds (at its root, or under `src/`)
@@ -2535,6 +2725,7 @@ def _check_python(path: Path, rel: str, local_modules: frozenset[str] = frozense
         src = source if source is not None else _read_python_source(path)
     except (SyntaxError, ValueError, LookupError, RecursionError, MemoryError):
         src = None
+    exe_token = _SYS_EXE_NAMES.set(_SYS_EXE_DEFAULT)
     token = _DB_HOST_ELSEWHERE.set(_DB_HOST_ELSEWHERE.get() or (src is not None and _db_host_elsewhere(src)))
     sink = _UNLISTED_SINK.get()
     if unlisted is None and sink is not None:
@@ -2552,6 +2743,7 @@ def _check_python(path: Path, rel: str, local_modules: frozenset[str] = frozense
         return found
     finally:
         _DB_HOST_ELSEWHERE.reset(token)
+        _SYS_EXE_NAMES.reset(exe_token)
 
 
 _DATABRICKS_HEADER_RE = re.compile(r"\A﻿?# Databricks notebook source[ \t]*$", re.MULTILINE)
@@ -2657,6 +2849,10 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
     try:
         src = source if source is not None else _read_python_source(path)
         tree = _parse_quietly(src, str(path))
+        _SYS_EXE_NAMES.set(_sys_exe_names(tree))     # reset by `_check_python`, the one caller
+        # every node of the file, walked once: the rules below read it many times (a 200,000-element literal
+        # was walked 57 times, 49 s of a 50 s audit), and nothing changes the tree while they do
+        _tree_nodes = list(ast.walk(tree))
     except (SyntaxError, ValueError, LookupError, RecursionError, MemoryError) as exc:
         # A file that could not be parsed is not a file nothing was found in. The
         # gap in coverage is reported as a finding so it reaches the reader, rather
@@ -2733,7 +2929,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
             unlisted.add(root)
 
     # imports under `if TYPE_CHECKING:` are read by type checkers and never run: reported, and said to be
-    type_only_lines = {n.lineno for node in ast.walk(tree) if isinstance(node, ast.If) and (
+    type_only_lines = {n.lineno for node in _tree_nodes if isinstance(node, ast.If) and (
         _dotted_name(node.test) or "").rsplit(".", 1)[-1] == "TYPE_CHECKING"
         for stmt in node.body for n in ast.walk(stmt) if isinstance(n, (ast.Import, ast.ImportFrom))}
 
@@ -2781,10 +2977,18 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
     # by how the file spelled the import: `import subprocess as sp`, `from os import system`.
     module_alias: dict[str, str] = {}
     from_alias: dict[str, tuple[str, str]] = {}
+    import_binds: dict[str, set] = {}
     # Names bound exactly once in the file to a list, tuple or string literal: an argv or a
     # command held in a variable one line above the call that uses it.
     bound: dict[str, list] = {}
-    for node in ast.walk(tree):
+    for node in _tree_nodes:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for a in node.names:
+                local = a.asname or a.name.split(".")[0]
+                # what the name stands for: `import collections.abc` binds `collections` to collections
+                target = (a.name if a.asname else a.name.split(".")[0]) if isinstance(node, ast.Import) \
+                    else f"{'.' * node.level}{node.module}.{a.name}"
+                import_binds.setdefault(local, set()).add(target)
         if isinstance(node, ast.Import):
             for a in node.names:
                 if a.asname:
@@ -2802,15 +3006,15 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
             bound.setdefault(node.target.id, []).append(getattr(node, "value", None))
     # attributes read off each plain name: `urllib.urlopen`, `urllib.request`, `wsgiref.simple_server`
     package_attrs: dict[str, set] = {}
-    for node in ast.walk(tree):
+    for node in _tree_nodes:
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
             package_attrs.setdefault(node.value.id, set()).add(node.attr)
     # Names of builtins this file binds to something else: a function it defines or an import.
-    defined_functions = {n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    defined_functions = {n.name for n in _tree_nodes if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
     server_provider_imported = any(m.split(".")[0] in SERVER_NAME_PROVIDERS for m in module_alias.values()) or any(
         m.split(".")[0] in SERVER_NAME_PROVIDERS for m, _ in from_alias.values())
     in_provider_source = rel.replace("\\", "/").split("/", 1)[0] in SERVER_NAME_PROVIDERS
-    rebound = {n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+    rebound = {n.name for n in _tree_nodes if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
     rebound |= {k for k, (mod, _) in from_alias.items() if mod != "builtins"} | set(bound)
     # a parameter or a variable named like a builtin (`def f(exec): return exec()`) is that name, not the builtin,
     # inside that function only: `_local_names[id(call)]` holds the names the calls enclosing scopes bind
@@ -2843,34 +3047,34 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
                 work.append((child, inherited))
     # names the file also binds another way: a parameter, a `for`, `with`, `except` or comprehension target, an
     # unpacked assignment. Such a name is not bound once: the value it holds where it is used is not the literal.
-    direct = {id(t) for n in ast.walk(tree) if isinstance(n, ast.Assign) for t in n.targets} | {
-        id(n.target) for n in ast.walk(tree) if isinstance(n, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr))}
-    bound_otherwise = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)
-                       and id(n) not in direct} | {n.arg for n in ast.walk(tree) if isinstance(n, ast.arg)} | {
-        n.name for n in ast.walk(tree) if isinstance(n, ast.ExceptHandler) and n.name} | {
+    direct = {id(t) for n in _tree_nodes if isinstance(n, ast.Assign) for t in n.targets} | {
+        id(n.target) for n in _tree_nodes if isinstance(n, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr))}
+    bound_otherwise = {n.id for n in _tree_nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)
+                       and id(n) not in direct} | {n.arg for n in _tree_nodes if isinstance(n, ast.arg)} | {
+        n.name for n in _tree_nodes if isinstance(n, ast.ExceptHandler) and n.name} | {
         # an import (`from local_settings import API_URL`), a function or class, a `case` pattern's capture
-        (a.asname or a.name).split(".")[0] for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))
+        (a.asname or a.name).split(".")[0] for n in _tree_nodes if isinstance(n, (ast.Import, ast.ImportFrom))
         for a in n.names if a.name != "*"} | {
-        n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))} | {
-        n.name for n in ast.walk(tree) if isinstance(n, (ast.MatchAs, ast.MatchStar)) and n.name} | {
-        n.rest for n in ast.walk(tree) if isinstance(n, ast.MatchMapping) and n.rest}
+        n.name for n in _tree_nodes if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))} | {
+        n.name for n in _tree_nodes if isinstance(n, (ast.MatchAs, ast.MatchStar)) and n.name} | {
+        n.rest for n in _tree_nodes if isinstance(n, ast.MatchMapping) and n.rest}
     assigned: dict[str, ast.AST] = {
         k: v[0] for k, v in bound.items()
         if len(v) == 1 and k not in bound_otherwise and (isinstance(v[0], (ast.List, ast.Tuple))
                             or (isinstance(v[0], ast.Constant) and isinstance(v[0].value, str))
-                            or _which_program(v[0]))}
+                            or _which_program(v[0]) or _is_sys_executable(v[0]))}   # `PY = sys.executable`
     # `from settings import *` or `globals()[name] = ...` may bind any name of the module: an address one is not taken
     # for the value it holds where it is used (an argv list or a program's name still is)
     # (one written before the binding is overridden by it: `from common import *` then `url = "https://..."`)
     # (also `globals().update(...)`, `g = globals(); g[name] = ...`, `setattr(sys.modules[__name__], name, ...)`,
     # `config.apply(globals())`)
-    namespace_aliases = {t.id for n in ast.walk(tree) if isinstance(n, ast.Assign) and _is_namespace(n.value)
+    namespace_aliases = {t.id for n in _tree_nodes if isinstance(n, ast.Assign) and _is_namespace(n.value)
                          for t in n.targets if isinstance(t, ast.Name)}
 
     def names_namespace(node: ast.AST) -> bool:
         return _is_namespace(node) or (isinstance(node, ast.Name) and node.id in namespace_aliases)
 
-    rebinds_all = [n.lineno for n in ast.walk(tree)
+    rebinds_all = [n.lineno for n in _tree_nodes
                    if (isinstance(n, ast.ImportFrom) and n.module != "__future__" and any(a.name == "*" for a in n.names))
                    or (isinstance(n, ast.Subscript) and isinstance(n.ctx, ast.Store) and names_namespace(n.value))
                    or (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
@@ -2894,7 +3098,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
     def dsn_env_named(_cache: list = []) -> bool:
         """The file names a database client's host variable (`os.environ["PGHOST"] = ...`), once worked out."""
         if not _cache:
-            _cache.append(any(_sets_dsn_environment(n) for n in ast.walk(tree)))
+            _cache.append(any(_sets_dsn_environment(n) for n in _tree_nodes))
         return _cache[0]
 
     # names bound once to `Mock()`, `MagicMock()`, `AsyncMock()` or `create_autospec(...)`
@@ -2907,7 +3111,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
     # backend setting), or a list a framework imports in turn (`MIDDLEWARE`, `INSTALLED_APPS`). A handler named in a
     # denylist or compared in a test is text.
     named_classes: list[ast.Constant] = []
-    for n in ast.walk(tree):
+    for n in _tree_nodes:
         if isinstance(n, ast.Dict):
             named_classes += [v for k, v in zip(n.keys, n.values)
                               if isinstance(k, ast.Constant) and k.value in _CLASS_KEYS
@@ -2944,7 +3148,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
     # `with requests_mock.mock() as m:`, `with responses.RequestsMock() as rsps:`: the name is a
     # test double when every `with` that binds it opens one.
     with_bound: dict[str, list] = {}
-    for node in ast.walk(tree):
+    for node in _tree_nodes:
         if isinstance(node, (ast.With, ast.AsyncWith)):
             for item in node.items:
                 if isinstance(item.optional_vars, ast.Name):
@@ -2956,6 +3160,104 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
     # names bound only to a `...Cache(...)` object: its `get` looks a key up, and the key may be a URL
     cache_names = {k for k, v in bound.items() if v and all(
         isinstance(e, ast.Call) and (_dotted_name(e.func) or "").rsplit(".", 1)[-1].endswith("Cache") for e in v)}
+    # names bound once to a container the file builds: a dict, list or set written in the file or made by a
+    # comprehension, or a `queue.*` or `collections.*` object. A method called on one (`seen.get(url)`,
+    # `q.put(url)`) is the container's own, and reaches nothing.
+    once_bound = {k: v[0] for k, v in bound.items() if len(v) == 1 and k not in bound_otherwise}
+
+    # names a `for`, `with ... as`, a parameter, an `except ... as`, a `def`, a `class` or a `match` capture binds,
+    # a second import of the name, and a module the file patches: `bound_otherwise` without the imports
+    rebound_otherwise = ({n.id for n in _tree_nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)
+                          and id(n) not in direct}
+                         | {n.arg for n in _tree_nodes if isinstance(n, ast.arg)}
+                         | {n.name for n in _tree_nodes if isinstance(n, ast.ExceptHandler) and n.name}
+                         | {n.name for n in _tree_nodes
+                            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+                         | {n.name for n in _tree_nodes if isinstance(n, (ast.MatchAs, ast.MatchStar)) and n.name}
+                         | {n.rest for n in _tree_nodes if isinstance(n, ast.MatchMapping) and n.rest}
+                         # a name the file deletes, or a type parameter of that name
+                         | {n.id for n in _tree_nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Del)}
+                         | {n.name for n in _tree_nodes
+                            if type(n).__name__ in ("TypeVar", "ParamSpec", "TypeVarTuple")}
+                         # a name two imports bind (`import queue` then `from requests import sessions as queue`)
+                         | {k for k, c in import_binds.items() if len(c) > 1}
+                         # a module patched in place: `queue.Queue = ...`, `setattr(queue, ...)`
+                         | {n.value.id for n in _tree_nodes if isinstance(n, ast.Attribute)
+                            and isinstance(n.ctx, ast.Store) and isinstance(n.value, ast.Name)}
+                         | {n.args[0].id for n in _tree_nodes if isinstance(n, ast.Call)
+                            and (_dotted_name(n.func) or "") == "setattr" and n.args
+                            and isinstance(n.args[0], ast.Name)}
+                         # patched through its namespace: `vars(queue)["Queue"] = ...`, `queue.__dict__[k] = ...`
+                         | {n.value.args[0].id for n in _tree_nodes if isinstance(n, ast.Subscript)
+                            and isinstance(n.ctx, ast.Store) and isinstance(n.value, ast.Call)
+                            and (_dotted_name(n.value.func) or "") == "vars" and n.value.args
+                            and isinstance(n.value.args[0], ast.Name)}
+                         | {n.value.value.id for n in _tree_nodes if isinstance(n, ast.Subscript)
+                            and isinstance(n.ctx, ast.Store) and isinstance(n.value, ast.Attribute)
+                            and n.value.attr == "__dict__" and isinstance(n.value.value, ast.Name)})
+    # (Until 2026-10-26 a fixed-point reading followed the routes by which a file could reach `sys`, `builtins` and
+    # the import hooks, to keep the container exemption in files that only read them. Four rounds of blind readers each
+    # found routes it did not follow (a list element, a tuple, a dict value, a class attribute, `next(iter(...))`), and
+    # its fixed points ran in exponential time on nested lists. Measured on the 81 real roots, no file both builds a
+    # container and hands one of its methods an address, so the exemption is now granted only in a file that does not
+    # reach the module system at all, which no route can get around: see `container_names` below.)
+
+    def _container_module(call: ast.AST) -> bool:
+        """A call of `queue.*` or `collections.*`, named through a real import the file never binds again
+        (`collections = requests` makes `collections.Session()` a requests session)."""
+        if not isinstance(call, ast.Call):
+            return False
+        dotted = _dotted_name(call.func) or ""
+        head, _, tail = dotted.partition(".")
+        if head in bound or head in rebound_otherwise:
+            return False
+        if _SHADOWING_MODULES.get():
+            return False                         # the tree holds its own `queue` or `collections`, anywhere in it
+        if not tail and head in from_alias:
+            return from_alias[head][0] in ("queue", "collections")
+        return bool(tail) and module_alias.get(head) in ("queue", "collections")
+    # `globals()['sess'] = requests.Session()` or `from x import *` may rebind any name: no container is assumed then
+    candidates = {k for k, v in once_bound.items()
+                  if isinstance(v, (ast.Dict, ast.List, ast.Set, ast.DictComp, ast.ListComp, ast.SetComp))
+                  or _container_module(v)}
+    # nor in a file that can change a container's methods or a module's contents in a way this reading does not
+    # follow: a reflective name or attribute (`_REFLECTIVE_NAMES`, `_REFLECTIVE_ATTRS`), `getattr` with a name the
+    # line does not spell out, or a store or delete of an attribute named like a method the file calls on one of its
+    # containers (`q.get = urlopen`, `type(q).get = f`, `cls.get = f`)
+    called_on = {n.func.attr for n in _tree_nodes if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                 and isinstance(n.func.value, ast.Name) and n.func.value.id in candidates} if candidates else set()
+    # the names a container is built through (`Queue`, `deque`): replacing one replaces what the file builds
+    called_on |= {(once_bound[k].func.attr if isinstance(once_bound[k].func, ast.Attribute) else
+                   getattr(once_bound[k].func, "id", "")) for k in candidates if isinstance(once_bound[k], ast.Call)}
+    reflective = bool(candidates) and any(
+        (isinstance(n, ast.Name) and n.id in _REFLECTIVE_NAMES)
+        or (isinstance(n, ast.Attribute) and (n.attr in _REFLECTIVE_ATTRS or (
+            n.attr in called_on and isinstance(n.ctx, (ast.Store, ast.Del)))))
+        or (isinstance(n, ast.alias) and (n.asname or n.name).rsplit(".", 1)[-1] in _REFLECTIVE_NAMES | _REFLECTIVE_ATTRS)
+        or (isinstance(n, ast.alias) and n.name.rsplit(".", 1)[-1] in _REFLECTIVE_NAMES | _REFLECTIVE_ATTRS)
+        # an import made by calling an `__import__` reached as an attribute (`importlib.__import__("queue")`)
+        or (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "__import__")
+        or (isinstance(n, ast.Call) and (_dotted_name(n.func) or "") in ("getattr", "hasattr") and len(n.args) >= 2
+            and not (isinstance(n.args[1], ast.Constant) and isinstance(n.args[1].value, str)))
+        # the module system, reached in any way: `sys`, `importlib`, `builtins`, `__import__` (as a name, an import,
+        # or an attribute: `os.sys`), so a module the file imports may be another one by the time it is used
+        or (isinstance(n, ast.Name) and n.id in _MODULE_SYSTEM)
+        or (isinstance(n, ast.alias) and (n.name.split(".")[0] in _MODULE_SYSTEM
+                                          or (n.asname or "") in _MODULE_SYSTEM))
+        or (isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] in _MODULE_SYSTEM)
+        or (isinstance(n, ast.Attribute) and n.attr in ("sys", "builtins", "__builtins__", "__import__"))
+        for n in _tree_nodes)
+    container_names = set() if rebinds_all or reflective or _SHADOWING_MODULES.get() else candidates
+    # names bound once to a process function: `runner = subprocess.run`, `sh = os.system`. A call through one is a
+    # call of that function.
+    process_aliases: dict[str, tuple[str, str]] = {}
+    for k, v in once_bound.items():
+        if isinstance(v, ast.Attribute) and isinstance(v.value, ast.Name):
+            mod = module_alias.get(v.value.id, v.value.id)
+            if (mod == "subprocess" and v.attr in SUBPROCESS_CALLERS) or (
+                    mod == "os" and v.attr in OS_SHELL_CALLERS | SPAWN_CALLERS) or (
+                    mod in ("asyncio", "pty") and v.attr in SPAWN_CALLERS):
+                process_aliases[k] = (mod, v.attr)
     # What an object a fetch-named method is called on was made from: `self.session = requests.Session()`,
     # `async with aiohttp.ClientSession() as s`, `def f(client: httpx.Client)`. A `.get(url)` is reported
     # as a network call only when its receiver traces back to a network package; the same name on
@@ -2963,7 +3265,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
     # a call whose receiver is not resolved.
     self_attrs: dict[str, list] = {}
     annotated: dict[str, list] = {}
-    for node in ast.walk(tree):
+    for node in _tree_nodes:
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             for t in targets:
@@ -3042,7 +3344,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
 
     # Classes this file defines, and names it imports from the tree's own code (a relative import, or a
     # package the tree itself holds).
-    defined_classes = {n.name for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
+    defined_classes = {n.name for n in _tree_nodes if isinstance(n, ast.ClassDef)}
     # A module never imports itself by its own name: `import socks` inside `.../contrib/socks.py` is the installed
     # package (PySocks), unless the tree's top level holds a module of that name.
     self_stem = rel.replace("\\", "/").rsplit("/", 1)[-1].rsplit(".", 1)[0]
@@ -3051,7 +3353,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
     def own_here(name: str) -> bool:
         return name in local_modules or (name in own_names and name != self_stem)
     own_imported: set[str] = set()
-    for n in ast.walk(tree):
+    for n in _tree_nodes:
         if isinstance(n, ast.ImportFrom) and (n.level or own_here((n.module or "").split(".")[0])):
             own_imported |= {a.asname or a.name for a in n.names}
         elif isinstance(n, ast.Import):
@@ -3087,13 +3389,13 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
 
     # Sockets this file binds to a literal address on this machine: `listener.bind(("127.0.0.1", 0))`. A call given
     # `listener.getsockname()` is given that address.
-    loopback_bound = {n.func.value.id for n in ast.walk(tree)
+    loopback_bound = {n.func.value.id for n in _tree_nodes
                       if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "bind"
                       and isinstance(n.func.value, ast.Name) and n.args
                       and isinstance(n.args[0], (ast.Tuple, ast.List)) and n.args[0].elts
                       and isinstance(n.args[0].elts[0], ast.Constant) and isinstance(n.args[0].elts[0].value, str)
                       and _THIS_MACHINE_HOST_RE.fullmatch(n.args[0].elts[0].value)}
-    bound_elsewhere = {n.func.value.id for n in ast.walk(tree)
+    bound_elsewhere = {n.func.value.id for n in _tree_nodes
                        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "bind"
                        and isinstance(n.func.value, ast.Name)} - loopback_bound
 
@@ -3106,14 +3408,14 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
         return None
     # A name is judged by its assignments in the innermost function that holds the call (a test file reuses `sock`
     # for TCP in one test and a Unix socket in the next), else by the module's own assignments.
-    scopes = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    scopes = [n for n in _tree_nodes if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
 
     def _innermost(line: int):
         inside = [n for n in scopes if n.lineno <= line <= (n.end_lineno or n.lineno)]
         return max(inside, key=lambda n: n.lineno) if inside else None
     scoped_bound: dict = {}
     accepted: list = []
-    for n in ast.walk(tree):
+    for n in _tree_nodes:
         if isinstance(n, ast.Assign):
             for t in n.targets:
                 if isinstance(t, ast.Name):
@@ -3142,7 +3444,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
 
     # Read from the code, not the text: `assertIn('AF_UNIX', repr(sock))` makes no Unix socket.
     makes_unix_sockets = any((isinstance(n, ast.Attribute) and n.attr == "AF_UNIX")
-                             or (isinstance(n, ast.Name) and n.id == "AF_UNIX") for n in ast.walk(tree))
+                             or (isinstance(n, ast.Name) and n.id == "AF_UNIX") for n in _tree_nodes)
 
     def _family_unshown(call: ast.Call) -> bool:
         """`loop.sock_sendall(s, ...)` in a file that also makes Unix sockets, where `s` is not traced to an internet
@@ -3168,7 +3470,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
     def _stand_in_classes() -> set[str]:
         # computed on first use: the tracing it needs is defined further down this function
         if not stand_in_cache:
-            stand_in_cache.append({n.name for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and in_test_file
+            stand_in_cache.append({n.name for n in _tree_nodes if isinstance(n, ast.ClassDef) and in_test_file
                                    and not any(_made_by_network_package(b) for b in n.bases)})
         return stand_in_cache[0]
 
@@ -3204,7 +3506,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
                    and a.func.value.id not in bound_elsewhere for a in call.args[:2])
 
     patched_lines: set[int] = set()
-    for n in ast.walk(tree):
+    for n in _tree_nodes:
         if isinstance(n, (ast.With, ast.AsyncWith)) and any(_patches_socket(i.context_expr) for i in n.items):
             patched_lines.update(range(n.lineno, (n.end_lineno or n.lineno) + 1))
         elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(_patches_socket(d) for d in n.decorator_list):
@@ -3223,7 +3525,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
             return first.value
         return None
     transport_patched: dict[int, list[str]] = {}
-    for n in ast.walk(tree):
+    for n in _tree_nodes:
         if isinstance(n, (ast.With, ast.AsyncWith)):
             targets = [t for t in (_patched_transport(i.context_expr) for i in n.items) if t]
         elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -3253,7 +3555,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
     # Lines inside `with mock.patch.object(policy, "resolve", ...)`: part of that object is replaced by the test, so
     # what a call on it reaches depends on the replacement.
     object_patched: dict[str, set[int]] = {}
-    for n in ast.walk(tree):
+    for n in _tree_nodes:
         if isinstance(n, (ast.With, ast.AsyncWith)):
             for i in n.items:
                 c = i.context_expr
@@ -3288,7 +3590,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
     # Plugins this file defines and registers by name: `Register.register("dummy", DummyConnectionPlugin)`, or under the
     # class's own `name` attribute. A connection opened by that name is the plugin's code.
     local_plugins: set[str] = set()
-    for n in ast.walk(tree):
+    for n in _tree_nodes:
         if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "register"
                 and len(n.args) >= 2 and isinstance(n.args[1], ast.Name) and n.args[1].id in defined_classes):
             key = n.args[0]
@@ -3307,7 +3609,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
     # `opener.open(Request(url))` on an opener this file builds from urllib.
     # (the opener's receiver is kept and judged where the finding is made, once the receiver rules exist)
     sent_on_build: dict[int, ast.AST | None] = {}
-    for n in ast.walk(tree):
+    for n in _tree_nodes:
         if not isinstance(n, ast.Call):
             continue
         sender = n.func.attr if isinstance(n.func, ast.Attribute) else (n.func.id if isinstance(n.func, ast.Name) else "")
@@ -3321,7 +3623,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
                         sent_on_build[id(a)] = opener
 
     doubled: dict[int, tuple[str, bool]] = {}
-    for n in ast.walk(tree):
+    for n in _tree_nodes:
         if isinstance(n, (ast.With, ast.AsyncWith)):
             for it in n.items:
                 d = _socket_double(it.context_expr) if isinstance(it.context_expr, ast.Call) else None
@@ -3419,7 +3721,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
             return roots
         return set()
 
-    for node in ast.walk(tree):
+    for node in _tree_nodes:
         if isinstance(node, ast.Import):
             for a in node.names:
                 if a.name == "asyncio" or a.name.startswith("asyncio."):
@@ -3437,7 +3739,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
                     (node.module or "") == "logging" and any(a.name == "handlers" for a in node.names)):
                 module_imports_logging_handlers = True
 
-    for node in ast.walk(tree):
+    for node in _tree_nodes:
         # network-capable imports
         if isinstance(node, ast.Import):
             for a in node.names:
@@ -3531,6 +3833,11 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
                     head, _, tail = dotted.partition(".")
                     recv_mod = f"{module_alias.get(head, head)}.{tail}"
             recv_top = recv_mod.split(".")[0] if recv_mod else None
+            if isinstance(fn, ast.Name) and fn.id in process_aliases and fn.id not in from_alias:
+                # `runner = subprocess.run` then `runner([...])`: the call is the function the name is bound to
+                recv_mod, name = process_aliases[fn.id]
+                recv_top = recv_mod
+                fn = ast.Attribute(value=ast.Name(id=recv_mod, ctx=ast.Load()), attr=name, ctx=ast.Load())
             from_import_call = isinstance(fn, ast.Name) and fn.id in from_alias
             # asyncio network calls: flagged at the CALL, never at the import.
             # `asyncio.open_connection(...)`, `loop.create_connection(...)` and a bare
@@ -3725,23 +4032,60 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
                             for kw in node.keywords)
                 # the command is the first positional argument or the `args=` keyword
                 commands = list(node.args[:1]) + [kw.value for kw in node.keywords if kw.arg == "args"]
-                strings = [s for c in commands for s in (_literal_argv(c, assigned, split=False) or [])]
+                strings = _unmark([s for c in commands for s in (_literal_argv(c, assigned, split=False) or [])])
                 if shell or name in ("getoutput", "getstatusoutput"):
                     hit = _SHELL_NET_WORD_RE.search(" ".join(strings)) if strings else None
                     extra = f"; the string invokes {hit.group(1)!r}" if hit else ""
                     out.append(Finding(rel, node.lineno, "subprocess-shell",
                                        f"{name}(shell=True): shell string can encode remote egress{extra}"))
+                # `executable=` names the program that runs; the argv's first word is then only the name it is given
+                exe_kw = next((kw.value for kw in node.keywords if kw.arg == "executable"), None)
+                if exe_kw is None and name in SUBPROCESS_CALLERS and name not in ("getoutput", "getstatusoutput") \
+                        and len(node.args) >= 3 and not any(isinstance(a, ast.Starred) for a in node.args[:3]):
+                    exe_kw = node.args[2]               # `Popen(args, bufsize, executable)`: the third positional
+                which_fallback = False
+                if isinstance(exe_kw, ast.Name) and isinstance(assigned.get(exe_kw.id), (ast.Constant, ast.Call)) \
+                        and not _is_sys_executable(exe_kw, assigned):
+                    exe_kw = assigned[exe_kw.id]
+                elif isinstance(exe_kw, ast.Name) and len(bound.get(exe_kw.id, ())) == 1 \
+                        and isinstance(bound[exe_kw.id][0], ast.Constant) and bound[exe_kw.id][0].value is None:
+                    exe_kw = bound[exe_kw.id][0]         # `E = None; run(argv, -1, E)`: the argv's own program runs
+                exe_text = _const_text(exe_kw.value) if isinstance(exe_kw, ast.Constant) else None
+                if exe_text is not None and exe_text.strip() and not shell:
+                    executable = _lit(exe_text)
+                elif exe_kw is not None and not shell and _which_program(exe_kw):
+                    # `executable=shutil.which("python3")`; when it finds nothing it gives None, and the argv's own
+                    # first word runs, so that word is read too
+                    executable = _which_program(exe_kw)
+                    which_fallback = True
+                elif exe_kw is not None and not shell and not (isinstance(exe_kw, ast.Constant) and exe_kw.value is None):
+                    # `executable=sys.executable` (however it is reached) runs Python; any other value names a program
+                    # the line does not spell out, so the argv's first word is only the name it is given
+                    executable = "python" if _is_sys_executable(exe_kw, assigned) else _ARGV_HOLE
+                else:
+                    executable = None
                 for c in commands:
                     resolved = assigned.get(c.id) if isinstance(c, ast.Name) else c
                     if shell and not isinstance(resolved, (ast.List, ast.Tuple)):
                         continue        # a shell string: reported above, not split into an argv
                     argv = _literal_argv(c, assigned)
+                    if executable == _ARGV_HOLE and argv:
+                        out += _unsettled_executable(rel, node.lineno, name, argv, local_modules)
+                    if which_fallback and argv:
+                        out += [f for f in _argv_findings(rel, node.lineno, name, argv, local_modules)
+                                if f.kind != "external-url"]
+                    if executable is not None:
+                        argv = [executable] + (argv[1:] if argv else [_ARGV_HOLE])
+                        resolved = None     # the program is named, so the argv is not a one-word command
                     # A one-word command string is a program started with no arguments at all:
                     # `Popen('docker')` prints its usage. (A list may hold arguments that are
                     # not literals, so a one-element LIST says nothing about how it is run.)
                     bare = isinstance(resolved, ast.Constant) and argv is not None and len(argv) == 1
                     if argv and not bare:
-                        out += _argv_findings(rel, node.lineno, name, argv, local_modules)
+                        out += _argv_findings(rel, node.lineno, name, argv, local_modules, record=True)
+                    elif bare:
+                        # no finding for a program run with no arguments, but it is still a program this file starts
+                        _argv_findings(rel, node.lineno, name, argv, local_modules, record=True)
             # os.system / os.popen shell strings, and IPython's `get_ipython().system(...)`
             # the notebook's shell, called directly (`get_ipython().system(...)`) or through a name bound to it
             on_ipython = isinstance(fn, ast.Attribute) and (
@@ -3796,7 +4140,7 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
                                             f"get_ipython().{name}({magic!r}, ...)", local_modules, shadowed,
                                             unlisted, own_names, importable, written=magic in ("writefile", "file"))
             if (name in OS_SHELL_CALLERS and recv_top == "os") or ipython_shell:
-                strings = [s for a in node.args[:1] for s in (_literal_argv(a, assigned, split=False) or [])]
+                strings = _unmark([s for a in node.args[:1] for s in (_literal_argv(a, assigned, split=False) or [])])
                 hit = _SHELL_NET_WORD_RE.search(" ".join(strings)) if strings else None
                 extra = f"; the string invokes {hit.group(1)!r}" if hit else ""
                 web = _PYTHON_WEB_SERVER_RE.search(" ".join(strings)) if strings and not hit else None
@@ -3814,16 +4158,18 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
                     named = {k.arg: k.value for k in node.keywords if k.arg}
                     spawned = ast.Call(func=node.func, keywords=[], args=list(node.args) + [
                         named[k] for k in ("mode", "file", "path", "args", "argv") if k in named])
-                flat = _argv_strings(spawned, holes=True)
-                for a in spawned.args:
-                    if isinstance(a, ast.Name) and a.id in assigned:
-                        flat += _literal_argv(a, assigned) or []
+                # a name bound once is read in its place: `PROG = "curl"` then `os.execlp(PROG, PROG, url)`, and a name
+                # bound once to a list is that list's words where it stands (`os.execv(P, ARGV)`, `pty.spawn(ARGV)`)
+                spawned = ast.Call(func=spawned.func, keywords=[], args=[
+                    ast.Starred(value=a, ctx=ast.Load()) if isinstance(a, ast.Name)
+                    and isinstance(assigned.get(a.id), (ast.List, ast.Tuple)) else a for a in spawned.args])
+                flat = _argv_strings(spawned, holes=True, assigned=assigned)
                 if name == "startfile":
-                    if any(URL_RE.search(s) for s in flat):
+                    if any(URL_RE.search(s) for s in _unmark(flat)):
                         out.append(Finding(rel, node.lineno, "network-call",
                                            "os.startfile(<URL>): hands a URL to the operating system's handler"))
                 elif name == "create_subprocess_shell":
-                    hit = _SHELL_NET_WORD_RE.search(" ".join(flat)) if flat else None
+                    hit = _SHELL_NET_WORD_RE.search(" ".join(_unmark(flat))) if flat else None
                     extra = f"; the string invokes {hit.group(1)!r}" if hit else ""
                     out.append(Finding(rel, node.lineno, "subprocess-shell",
                                        f"asyncio.create_subprocess_shell(...): shell string{extra}"))
@@ -3833,11 +4179,11 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
                         # first for spawn*, then the program, then the argv it is given, whose argv[0] names it (as it
                         # likes: `os.execlp("git", "git-sync", "pull")` runs git with the argument `pull`). The command
                         # is the program and the argv after argv[0].
-                        if name.startswith("spawn") and flat[0] == _ARGV_HOLE:
+                        if name.startswith("spawn") and _is_hole(flat[0]):
                             flat = flat[1:]
-                        if len(flat) >= 2 and flat[0] != _ARGV_HOLE and flat[1] != _ARGV_HOLE:
+                        if len(flat) >= 2 and not _is_hole(flat[0]) and not _is_hole(flat[1]):
                             flat = [flat[0]] + flat[2:]
-                    out += _argv_findings(rel, node.lineno, name, flat, local_modules)
+                    out += _argv_findings(rel, node.lineno, name, flat, local_modules, record=True)
             # dynamic exec/eval/compile/import: undecidable payloads, flagged unconditionally
             builtin_attr = (isinstance(fn, ast.Attribute) and isinstance(fn.value, ast.Name)
                             and fn.value.id in {"builtins", "__builtins__"})
@@ -3939,7 +4285,10 @@ def _check_python_source(path: Path, rel: str, local_modules: frozenset[str] = f
                                        f"{name}(...): reads or writes a path on another machine (a UNC path, reached "
                                        "over SMB)"))
             # a URL literal handed to something that fetches, or a connection string handed to a client
-            if name in URL_SINK_NAMES:
+            # a method of a container the file builds (`seen.get(url)`, `q.put(url)`) is the container's own
+            own_container = (isinstance(fn, ast.Attribute) and isinstance(fn.value, ast.Name)
+                             and fn.value.id in container_names)
+            if name in URL_SINK_NAMES and not own_container:
                 # A URL written in the call. A name bound once in the file to a URL literal counts
                 # only where the callee is unmistakably a fetcher: `q.put(base_url)` is a queue.
                 given = _string_args(node)
@@ -4210,7 +4559,7 @@ def _task_runner_findings(tree: ast.AST, rel: str, module_alias: dict, from_alia
                     argv = [s for a in node.args for s in (_literal_argv(a, assigned, split=False) or [_ARGV_HOLE])]
                     if node.func.attr in ("install", "conda_install"):
                         argv = (["pip", "install"] if node.func.attr == "install" else ["conda", "install"]) + argv
-                    out += _argv_findings(rel, node.lineno, caller, argv)
+                    out += _argv_findings(rel, node.lineno, caller, argv, record=True)
                 else:
                     arg = node.args[0]
                     if isinstance(arg, ast.JoinedStr):
@@ -4219,6 +4568,7 @@ def _task_runner_findings(tree: ast.AST, rel: str, module_alias: dict, from_alia
                                            else "X" for v in arg.values)]
                     else:
                         command = _literal_argv(arg, assigned, split=False)
+                        command = _unmark(command) if command else command
                     if command and command[0] != _ARGV_HOLE:
                         out += [Finding(rel, node.lineno, f.kind, f"{caller}(...) runs a shell command: {f.detail}")
                                 for f in _check_script(Path("task.sh"), rel, text=command[0] + "\n")]
@@ -4360,6 +4710,222 @@ def _dotted_name(node: ast.AST) -> str | None:
 
 # Stands where an argv element is not a literal (a variable, a call): never a program, an option or a subcommand.
 _ARGV_HOLE = "\x00"
+# Ends a word whose literal start is spelled out and whose value is not (`f"-n{level}"` gives "-n" + this). Only
+# `_principal_reading` and `_program_parses` read it; `_unmark` turns it back into `_ARGV_HOLE` for every other rule.
+_ARGV_VALUE = "\x01"
+# Stands for a word of an `env -S` string the line does not spell out (`f"{x} curl"`): unlike `_ARGV_HOLE`, which under
+# `env` before a program name is a setting, it may be the program itself, since its value is split into words too.
+_ARGV_SPLIT_HOLE = "\x02"
+# What an `env -S` string env refuses gives: env reports an error and runs nothing.
+_ENV_REJECTED = ["\x03"]
+
+
+def _lit(text: str) -> str:
+    """A string the source spells out, with the four characters the argv readings use as markers (U+0000 to U+0003)
+    written as their control pictures (U+2400 to U+2403), so a literal that happens to hold one is still read, and
+    named, as written.
+    """
+    return (text.replace(_ARGV_HOLE, "\u2400").replace(_ARGV_VALUE, "\u2401").replace(_ARGV_SPLIT_HOLE, "\u2402")
+            .replace("\x03", "\u2403"))
+
+
+def _unmark(words: list[str]) -> list[str]:
+    """The argv as the rules outside the wrapper readings see it: a word with a spelled-out start is not spelled out."""
+    return [_ARGV_HOLE if _ARGV_VALUE in w else w for w in words]
+
+
+def _is_hole(word: str) -> bool:
+    return word == _ARGV_HOLE or word == _ARGV_SPLIT_HOLE or _ARGV_VALUE in word
+
+
+def _settled(name: str, word: str) -> bool:
+    """Whether a marked word's spelled-out start settles how many words it takes for wrapper `name`: a setting or an
+    option with `=` takes none after it; so does a short-option cluster in which, read as getopt reads it, a letter the
+    manual says takes a value comes before the placeholder (`-n{level}`, `-iu{user}`: the rest is that value). Any
+    other start (`--{o}`, `--us{o}`, `-i{o}`, an undocumented letter) is an option whose arity is not known."""
+    start = word.split(_ARGV_VALUE, 1)[0]
+    if "=" in start:
+        return True
+    if start.startswith("-") and not _WRAPPER_VALUE_OPTIONS.get(name) and name not in _WRAPPER_OPTIONAL_VALUE:
+        return True                              # `setsid`, `nohup`, `command`: no option of theirs takes a value
+    if not start.startswith("-") or start.startswith("--"):
+        return False
+    takes = _WRAPPER_VALUE_OPTIONS.get(name, set())
+    attached = _WRAPPER_ATTACHED_OPTIONAL.get(name, set())
+    for letter in start[1:]:
+        if "-" + letter in takes or "-" + letter in attached:
+            return True                          # the rest of the word is that option's value
+        if not _wrapper_word(name, "-" + letter):
+            return False
+    return False
+
+
+def _unsettled_option(name: str, word: str) -> bool:
+    """A marked option word (`--{o}`, `-i{o}`) whose start does not settle its arity: an option, never the program,
+    which may or may not take the next word."""
+    return _ARGV_VALUE in word and word.startswith("-") and not _settled(name, word)
+
+
+def _split_string(text: str) -> list[str] | None:
+    """The words of an `env -S` string as GNU env splits them, or None for a string env refuses.
+
+    Words split on spaces and tabs only (a newline, `\\r`, `\\v` or `\\f` stays inside a word, as GNU env 8.32 reads
+    it); inside `'...'`, `\\'` is a quote, a backslash before a backslash is dropped, a backslash before one of the
+    escape letters below stays as written, and any other is refused; `"..."` quotes, with backslash
+    escapes; outside quotes `\\_` separates words and `\\c` ends the string; a word beginning with `#` ends it too.
+    The escapes are `\\f \\n \\r \\t \\v \\\\ \\" \\' \\# \\$` (and `\\_`, `\\c` as above); any other is
+    refused, as are an unterminated quote, `$` other than `${NAME}`, and `\\c` inside double quotes. A word holding a
+    value the line does not spell out (an f-string's value, or `${NAME}`) is `_ARGV_SPLIT_HOLE`, unless its start is
+    an option or a setting, which settles what the word is.
+    """
+    controls = {"f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v"}
+    literal = set("\\\"'#$")
+    words: list[str] = []
+    cur: str | None = None
+    quote = None
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if quote == "'":
+            if ch == "'":
+                quote = None
+            elif ch == "\\" and i + 1 < n and text[i + 1] == "'":
+                i += 1
+                cur += "'"
+            elif ch == "\\" and i + 1 < n and text[i + 1] == "\\":
+                pass                             # dropped: the next backslash is read as the escape
+            elif ch == "\\" and i + 1 < n and (text[i + 1] in controls or text[i + 1] in literal
+                                               or text[i + 1] in "_c" or text[i + 1] == _ARGV_VALUE):
+                i += 1
+                cur += "\\" + text[i]           # kept as written
+            elif ch == "\\":
+                return None                      # `'a\\qb'`: an escape env does not know
+            else:
+                cur += ch
+        elif ch == "\\":
+            if i + 1 >= n:
+                return None
+            i += 1
+            e = text[i]
+            if e == _ARGV_VALUE:                 # an escape of a value the line does not spell out: unknown
+                cur = (cur or "") + e
+            elif e in controls:
+                cur = (cur or "") + controls[e]
+            elif e in literal:
+                cur = (cur or "") + e
+            elif e == "_":
+                if quote == '"':
+                    cur += " "
+                elif cur is not None:            # `\_` separates words outside quotes
+                    words.append(cur)
+                    cur = None
+            elif e == "c" and quote is None:
+                break                            # `\c` ends the string
+            else:
+                return None                      # an escape env does not know
+        elif ch == "$":
+            if text[i + 1:i + 2] == _ARGV_VALUE:
+                cur = (cur or "") + _ARGV_VALUE  # `$` and a value the line does not spell out: unknown
+                i += 1
+            else:
+                m = re.match(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", text[i:])
+                if not m:
+                    return None                  # env expands only `${NAME}`
+                cur = (cur or "") + _ARGV_VALUE
+                i += m.end() - 1
+        elif quote == '"':
+            if ch == '"':
+                quote = None
+            else:
+                cur += ch
+        elif ch in " \t":
+            if cur is not None:
+                words.append(cur)
+                cur = None
+        elif ch == "#" and cur is None:
+            break                                # a comment: the rest of the string is not read
+        elif ch in "'\"":
+            quote, cur = ch, (cur or "")
+        else:
+            cur = (cur or "") + ch
+        i += 1
+    if quote is not None:
+        if _ARGV_VALUE not in text:
+            return None                          # an unterminated quote
+        cur = (cur or "") + _ARGV_VALUE          # a value the line does not spell out may close it
+    if cur is not None:
+        words.append(cur)
+    return [_ARGV_SPLIT_HOLE if _ARGV_VALUE in w and not re.match(r"-\S|[A-Za-z_][A-Za-z0-9_]*=",
+                                                                   w.split(_ARGV_VALUE, 1)[0]) else w for w in words]
+
+
+def _split_long(word: str) -> bool:
+    """`--split-string` or an abbreviation of it env accepts (`--split`, `--s`), with or without `=`."""
+    head = word.split("=", 1)[0]
+    return len(head) >= 3 and "--split-string".startswith(head)
+
+
+def _split_option(word: str) -> bool:
+    """An `env` option that takes the next word as its -S string: `-S`, `-iS`, `--split-string`, `--split`."""
+    return word == "-S" or bool(re.fullmatch(r"-[0iv]+S", word)) or (_split_long(word) and "=" not in word)
+
+
+def _env_split_string(word: str, rest: list[str]) -> list[str] | None:
+    """`env -S STRING`, `-SSTRING`, `--split-string=STRING` (and its abbreviations), `-iS STRING`, `-iSSTRING`: the
+    words of STRING followed by the words after it, which env reads again as options until the first operand (as GNU
+    env does). `_ENV_REJECTED` for a string env refuses; None when `word` is not that option, or STRING is a word the
+    line does not spell out at all."""
+    if _split_option(word):
+        if len(rest) > 1 and rest[1] != _ARGV_HOLE:
+            words = _split_string(rest[1])
+            return _ENV_REJECTED if words is None else words + rest[2:]
+        if len(rest) > 1:
+            return [_ARGV_SPLIT_HOLE] + rest[2:]     # the string is not spelled out: its words come first, unknown
+        return None
+    if _split_long(word):
+        words = _split_string(word.split("=", 1)[1])
+    else:
+        m = re.fullmatch(r"-[0iv]*S(.+)", word, re.S)
+        if not m:
+            return None
+        words = _split_string(m.group(1))
+    return _ENV_REJECTED if words is None else words + rest[1:]
+
+
+def _for_readings(words: list[str]) -> list[str]:
+    """The argv as the wrapper readings take it: a word whose written start is neither an option nor a setting is a
+    word the line does not spell out, unless it is the string of an `env -S` before it."""
+    out, wrapper = [], None
+    for i, w in enumerate(words):
+        prev = words[i - 1] if i else ""
+        if (_argv_basename(w) in ARGV_WRAPPERS and _ARGV_VALUE not in w
+                and not (wrapper and prev in _WRAPPER_VALUE_OPTIONS.get(wrapper, ()))):   # (`env -u nice`: a value)
+            wrapper = _argv_basename(w)
+        if _ARGV_VALUE in w:
+            prev = words[i - 1] if i else ""
+            split_string = wrapper == "env" and _split_option(prev)
+            if not split_string and not re.match(r"-\S|[A-Za-z_][A-Za-z0-9_]*=", w.split(_ARGV_VALUE, 1)[0]):
+                w = _ARGV_HOLE
+        out.append(w)
+    return out
+
+
+def _env_setting(word: str) -> bool:
+    """A `NAME=value` operand of env, its value spelled out or not (`f"A={x}"`)."""
+    start = word.split(_ARGV_VALUE, 1)[0]
+    return "=" in start and not start.startswith("-") and word != _ARGV_SPLIT_HOLE
+
+
+def _spelled(word: str) -> bool:
+    """A word the line spells out, as the readings give the program and its arguments."""
+    return not _is_hole(word)
+
+
+def _first_spelled(seq: list[str]) -> int:
+    k = 0
+    while k < len(seq) and _is_hole(seq[k]):
+        k += 1
+    return k
 
 
 def _literal_argv(node: ast.AST, assigned: dict, split: bool = True, _depth: int = 0) -> list[str] | None:
@@ -4379,24 +4945,88 @@ def _literal_argv(node: ast.AST, assigned: dict, split: bool = True, _depth: int
         # side built while running is a hole
         left = _literal_argv(node.left, assigned, split, _depth + 1) \
             if isinstance(node.left, (ast.List, ast.Tuple, ast.BinOp, ast.Name)) else None
-        if not left or left[0] == _ARGV_HOLE:
+        if not left or _is_hole(left[0]):
             return None
         right = _literal_argv(node.right, assigned, split, _depth + 1) \
             if isinstance(node.right, (ast.List, ast.Tuple, ast.BinOp, ast.Name)) else None
         return left + (right if right is not None else [_ARGV_HOLE])
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value.split() if split else [node.value]
+        return _lit(node.value).split() if split else [_lit(node.value)]
     if isinstance(node, ast.Call):
         fn = node.func
         if isinstance(fn, ast.Attribute) and fn.attr == "split":
             if isinstance(fn.value, ast.Constant) and isinstance(fn.value.value, str) and not node.args:
-                return fn.value.value.split() if split else [fn.value.value]
+                return _lit(fn.value.value).split() if split else [_lit(fn.value.value)]
             if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
-                return node.args[0].value.split() if split else [node.args[0].value]   # shlex.split("...")
+                return _lit(node.args[0].value).split() if split else [_lit(node.args[0].value)]   # shlex.split
         return None
     if isinstance(node, ast.Name) and node.id in assigned and _depth < 2:
         return _literal_argv(assigned[node.id], assigned, split, _depth + 1)
     return None
+
+
+def _unparse_safe(node: ast.AST) -> str | None:
+    """`ast.unparse`, or None for an expression too deep to write back (`x.a.a...a`, hundreds of attributes)."""
+    try:
+        return ast.unparse(node)
+    except (RecursionError, ValueError, MemoryError):
+        return None
+
+
+# Names and attributes through which a file can change what a container's method is, or which module a name holds,
+# in ways a reading of the file cannot follow (`setattr`, `vars(...)`, `__dict__`, `sys.modules`, `sys.meta_path`,
+# `mock.patch`, `exec`): in a file that uses any of them, a method called on a container it builds is not taken to
+# be the container's own.
+# Names through which a file reaches the module system: with any of them, a module it imports may be swapped
+_MODULE_SYSTEM = frozenset({"sys", "importlib", "builtins", "__builtins__", "__import__", "imp", "runpy"})
+# During an audit: whether the tree holds its own `queue`, `collections`, `_queue` or `_collections` anywhere (a
+# folder skipped by name included: `sys.path.insert(0, "build")`, or a script beside its own `queue.py`)
+_SHADOWING_MODULES: contextvars.ContextVar = contextvars.ContextVar("entrovouch_shadowing_modules", default=False)
+_SHADOWABLE = frozenset({"queue", "collections", "_queue", "_collections"})
+
+
+def _tree_shadows_containers(target) -> bool:
+    root = Path(target)
+    if root.is_file():
+        # a single file: only its own folder (a script's folder comes first on its import path); its folder's whole
+        # subtree is not what is audited, and may be as large as the system temp folder
+        try:
+            return any((root.parent / n).is_dir() or (root.parent / f"{n}.py").is_file() for n in _SHADOWABLE)
+        except OSError:
+            return False
+    # a symlink or a Windows junction is not followed (`os.walk` follows a junction, which is not a symlink to it, and a
+    # junction looping back hung the audit), and a folder reached twice is read once
+    seen: set = set()
+    for dp, dns, fns in os.walk(root):
+        try:
+            st = os.stat(dp)
+            key = (st.st_dev, st.st_ino)
+        except OSError:
+            dns[:] = []
+            continue
+        if key in seen:
+            dns[:] = []
+            continue
+        seen.add(key)
+        if any(d in _SHADOWABLE for d in dns) or any(f.endswith(".py") and f[:-3] in _SHADOWABLE for f in fns):
+            return True
+        dns[:] = [d for d in dns if d not in (".git", "node_modules")
+                  and not os.path.islink(os.path.join(dp, d))
+                  and not (hasattr(os.path, "isjunction") and os.path.isjunction(os.path.join(dp, d)))]
+    return False
+
+
+_REFLECTIVE_NAMES = frozenset({
+    "setattr", "delattr", "vars", "globals", "locals", "exec", "eval", "compile", "execfile", "__import__",
+    "__builtins__", "attrgetter", "methodcaller", "patch", "monkeypatch", "import_module", "currentframe",
+    "_getframe", "reload"})
+_REFLECTIVE_ATTRS = frozenset({
+    "__dict__", "__globals__", "f_globals", "f_locals", "f_back", "__mro__", "__base__", "__bases__", "__class__",
+    "__code__", "__func__", "__setattr__", "__delattr__", "__getattribute__", "__subclasses__", "__builtins__",
+    "patch", "setattr", "delattr", "import_module", "attrgetter", "methodcaller", "currentframe", "_getframe",
+    "reload", "exec", "eval"})
+# (`sys.modules`, `sys.meta_path` and `builtins.__import__` are followed by the module-table rule itself, which tells
+# a store that swaps a module this rule relies on from one that does not.)
 
 
 def _attr_root_name(node: ast.AST) -> str | None:
@@ -4551,11 +5181,76 @@ def _string_args(call: ast.Call) -> list[str]:
     return _argv_strings(call)
 
 
+def _sys_exe_names(tree: ast.AST) -> tuple:
+    """The file's names for the sys module, for `sys.executable` through a from-import, and for the os module."""
+    sys_names, exe_names, os_names = {"sys"}, set(), {"os"}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                if a.name == "sys":
+                    sys_names.add(a.asname or "sys")
+                elif a.name == "os":
+                    os_names.add(a.asname or "os")
+        elif isinstance(n, ast.ImportFrom) and n.module == "sys" and not n.level:
+            exe_names.update(a.asname or a.name for a in n.names if a.name in ("executable", "_base_executable"))
+        elif isinstance(n, ast.ImportFrom) and n.module == "os" and not n.level:
+            sys_names.update(a.asname or "sys" for a in n.names if a.name == "sys")
+    # a from-imported name assigned again at module level (`executable = shutil.which("curl")`) is not the
+    # interpreter's path; a local of the same name in a function, a class attribute or a loop variable is another
+    # binding (or may never run, `for executable in []`), so the module's name keeps its meaning
+    stored, todo = set(), list(getattr(tree, "body", []))
+    while todo:
+        s = todo.pop()
+        if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if isinstance(s, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
+            for tgt in (s.targets if isinstance(s, (ast.Assign, ast.Delete)) else [s.target]):
+                stored |= {n.id for n in ast.walk(tgt) if isinstance(n, ast.Name)}
+        for field in ("body", "orelse", "finalbody", "handlers"):
+            todo.extend(x for x in getattr(s, field, []) if isinstance(x, ast.AST))
+    exe_names -= stored
+    return frozenset(sys_names), frozenset(exe_names), frozenset(os_names)
+
+
+def _is_sys_executable(e: ast.AST, assigned: dict | None = None, _depth: int = 0) -> bool:
+    """Whether an expression is the running interpreter's path: `sys.executable` (or `sys._base_executable`) however
+    sys is reached (`import sys as s`, `os.sys`), `from sys import executable`, `str(...)` or `os.fspath(...)` of one,
+    or a name bound once to one of those."""
+    sys_names, exe_names, os_names = _SYS_EXE_NAMES.get()
+    if isinstance(e, ast.Attribute) and e.attr in ("executable", "_base_executable"):
+        v = e.value
+        return (isinstance(v, ast.Name) and v.id in sys_names) or (
+            isinstance(v, ast.Attribute) and v.attr == "sys" and isinstance(v.value, ast.Name) and v.value.id in os_names)
+    if isinstance(e, ast.Name):
+        if e.id in exe_names:
+            return True
+        return bool(assigned) and _depth < 8 and e.id in assigned and assigned[e.id] is not None \
+            and _is_sys_executable(assigned[e.id], assigned, _depth + 1)
+    if isinstance(e, ast.Call) and len(e.args) == 1 and not e.keywords and _depth < 8 and (_dotted_name(e.func) or "") in (
+            "str", "os.fspath", "fspath", "os.fsencode", "fsencode", "pathlib.Path", "Path", "pathlib.PurePath"):
+        return _is_sys_executable(e.args[0], assigned, _depth + 1)
+    if isinstance(e, ast.Call) and (_dotted_name(e.func) or "") == "getattr" and len(e.args) >= 2 \
+            and isinstance(e.args[1], ast.Constant) and e.args[1].value in ("executable", "_base_executable"):
+        v = e.args[0]                            # `getattr(sys, "executable")`, `getattr(os.sys, "executable")`
+        return (isinstance(v, ast.Name) and v.id in sys_names) or (
+            isinstance(v, ast.Attribute) and v.attr == "sys" and isinstance(v.value, ast.Name) and v.value.id in os_names)
+    return False
+
+
+def _const_text(value) -> str | None:
+    """A string constant's text, or a bytes constant's (`b"-c"`: an argv may be bytes)."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    return None
+
+
 def _which_program(node: ast.AST) -> str | None:
     """`shutil.which('git')` or `which('git')`: the program it looks up, which is what runs when its path is used."""
     if isinstance(node, ast.Call) and node.args and isinstance(node.args[0], ast.Constant) \
             and isinstance(node.args[0].value, str) and (_dotted_name(node.func) or "").rsplit(".", 1)[-1] == "which":
-        return node.args[0].value
+        return _lit(node.args[0].value)
     return None
 
 
@@ -4567,11 +5262,11 @@ def _argv_strings(node: ast.AST, holes: bool = False, assigned: dict | None = No
     out: list[str] = []
     items = node.args if isinstance(node, ast.Call) else getattr(node, "elts", [])
     for e in items:
-        if isinstance(e, ast.Constant) and isinstance(e.value, str):
-            out.append(e.value)
+        if isinstance(e, ast.Constant) and _const_text(e.value) is not None:
+            out.append(_lit(_const_text(e.value)))
         elif isinstance(e, (ast.List, ast.Tuple)):
-            out += _argv_strings(e, holes)
-        elif isinstance(e, ast.Attribute) and e.attr == "executable" and _attr_root_name(e) == "sys":
+            out += _argv_strings(e, holes, assigned, _depth)
+        elif _is_sys_executable(e, assigned):
             out.append("python")
         elif _which_program(e) or (assigned and isinstance(e, ast.Name) and e.id in assigned
                                    and _which_program(assigned[e.id])):
@@ -4579,11 +5274,20 @@ def _argv_strings(node: ast.AST, holes: bool = False, assigned: dict | None = No
             out.append(_which_program(e) or _which_program(assigned[e.id]))
         elif assigned and isinstance(e, ast.Name) and isinstance(assigned.get(e.id), ast.Constant) \
                 and isinstance(assigned[e.id].value, str):
-            out.append(assigned[e.id].value)        # `GIT = 'git'` then `[GIT, 'pull']`
+            out.append(_lit(assigned[e.id].value))  # `GIT = 'git'` then `[GIT, 'pull']`
         elif (assigned and _depth < 2 and isinstance(e, ast.Starred) and isinstance(e.value, ast.Name)
               and isinstance(assigned.get(e.value.id), (ast.List, ast.Tuple))):
             # `CURL = ['curl', '-fsSL']` then `[*CURL, url]`: the list's words, in place
             out += _argv_strings(assigned[e.value.id], holes, assigned, _depth + 1)
+        elif isinstance(e, ast.JoinedStr) and e.values and all(isinstance(v, ast.Constant) for v in e.values):
+            out.append(_lit("".join(str(v.value) for v in e.values)))     # `f"-u"`: no placeholder, a literal
+        elif holes and isinstance(e, ast.JoinedStr) and e.values:
+            # `f"-n{level}"`, `f"--user={u}"`, `f"A=1 curl {u}"`: the written parts, with `_ARGV_VALUE` where each
+            # value goes. Only the wrapper readings use them (a start that shows an option or a setting, read by
+            # `_settled`; an `env -S` string, read by `_split_string`); every other rule sees a word the line does not
+            # spell out (`_unmark`).
+            out.append("".join(_lit(str(v.value)) if isinstance(v, ast.Constant) else _ARGV_VALUE
+                               for v in e.values))
         elif holes:
             out.append(_ARGV_HOLE)
     return out
@@ -4595,29 +5299,604 @@ _BROWSER_OPENERS = {"xdg-open", "open", "start", "explorer", "sensible-browser",
                     "msedge", "rundll32"}
 
 
-def _argv_findings(rel: str, lineno: int, caller: str, elts: list[str],
-                   local_modules: frozenset[str] = frozenset()) -> list[Finding]:
-    """Findings for a literal argv: a network binary, a git remote subcommand, a shell
-    interpreter handed a command string, or a child interpreter handed a module or code."""
-    out: list[Finding] = []
-    # `holed` keeps a placeholder where an element was not a literal; the checks below read the literals,
-    # and a check that depends on position or on there being nothing else reads `holed`.
-    holed = list(elts)
-    elts = [a for a in elts if a != _ARGV_HOLE]
-    if not elts:
-        return out
-    # `env curl ...`, `sudo wget ...`, `timeout 5 curl ...`: the program that runs is the
-    # one after the wrapper, its options, any number and any VAR=value setting.
-    for _ in range(4):
-        if _argv_basename(elts[0]) not in ARGV_WRAPPERS:
+def _takes_next_word(word: str, takes: set, attached: set | tuple = ()) -> bool:
+    """Whether a wrapper's option word consumes the next word as its value, read as getopt reads it: `-u root`
+    and the cluster `-iu root` do; `-uroot` (value attached), `--user=root` and `-n5` do not, nor does a cluster
+    reaching an option whose optional value is attached only (`xargs -ia`: `-i` with the replace-string `a`)."""
+    if word in takes:
+        return True
+    if len(word) > 2 and word[0] == "-" and word[1] != "-" and "=" not in word:
+        for k, letter in enumerate(word[1:], start=1):
+            if "-" + letter in attached:
+                return False
+            if "-" + letter in takes:
+                return k == len(word) - 1
+    return False
+
+
+_PARSE_LIMIT = 64
+# When the search does not finish, how many literal words are read as the program in turn.
+_FALLBACK_WORDS = 64
+# Steps the parse search may take on one line: without a bound, alternating unknown options and wrappers grow it
+# exponentially (`sudo -x sudo -x ...`).
+_PARSE_STEPS = 4000
+# How deep the parse search may nest (one level a word): a long argv cannot exhaust the interpreter's stack.
+_PARSE_NEST = 300
+
+
+def _option_like(word: str) -> bool:
+    """A wrapper's own word that is not its program: an option, a VAR=value setting or a number (`timeout 5`)."""
+    return word.startswith("-") or "=" in word or re.fullmatch(r"[\d.]+[smhd]?", word) is not None
+
+
+def _wrapper_word(name: str, word: str) -> bool:
+    """`word` belongs to wrapper `name` rather than to its program: a documented option (a cluster of documented
+    letters too), a VAR=value setting, a number or `--`."""
+    if word == "--" or "=" in word and not word.startswith("-") or _duration_like(name, word):
+        return True
+    known = _WRAPPER_VALUE_OPTIONS.get(name, set()) | _WRAPPER_FLAGS.get(name, set())
+    if word in known or word.split("=", 1)[0] in known:
+        return True
+    if name == "nice" and re.fullmatch(r"-\d+", word):        # `nice -5 cmd`: the older -ADJUSTMENT form
+        return True
+    return (len(word) > 2 and word[0] == "-" and word[1] != "-"
+            and all("-" + c in known for c in word[1:]))
+
+
+def _env_split(word: str, rest: list[str]) -> list[str]:
+    """`env -S 'curl https://x'` / `env --split-string=...`: the string is the command line, split on spaces."""
+    return word.split() + rest
+
+
+class _Tail:
+    """The words of a list from one place on, without copying them: `tail[k:]` is another view, so reading a line of
+    n words one at a time costs n steps rather than n squared copies (a 250,000-word `env -S` string took 195 s)."""
+    __slots__ = ("_words", "_at")
+
+    def __init__(self, words, at: int = 0):
+        if isinstance(words, _Tail):
+            words, at = words._words, words._at + at
+        self._words, self._at = words, at
+
+    def __len__(self):
+        return max(0, len(self._words) - self._at)
+
+    def __bool__(self):
+        return len(self) > 0
+
+    def __iter__(self):
+        words = self._words
+        return (words[j] for j in range(self._at, len(words)))
+
+    def __getitem__(self, k):
+        if isinstance(k, slice):
+            start, stop = k.start or 0, k.stop
+            if k.step is None and start >= 0 and stop is None:
+                return _Tail(self, start)
+            if k.step is None and start >= 0 and stop is not None and stop >= 0:
+                return self._words[self._at + start:self._at + stop]
+            return list(self)[k]
+        if k < 0:
+            k += len(self)
+        if not 0 <= k < len(self):
+            raise IndexError(k)
+        return self._words[self._at + k]
+
+    def __eq__(self, other):
+        return list(self) == list(other)
+
+    def __add__(self, other):
+        return list(self) + list(other)
+
+    def __radd__(self, other):
+        return list(other) + list(self)
+
+
+def _principal_reading(holed: list[str]) -> tuple[list[str] | None, bool]:
+    """The reading that follows the wrappers' own syntax: a documented option value (`_WRAPPER_VALUE_OPTIONS`, option
+    clusters as getopt reads them) is skipped, a wrapper's own argument (`chroot NEWROOT`, `timeout DURATION`) is
+    skipped and ends its options, and `env -S` splits its string into words that are read again. A word the line does
+    not spell out, where the program would be, is the program: the reading then gives the literal words after it as
+    that unknown program's arguments, and True; so does a line that is still a wrapper after `_WRAPPER_DEPTH` of them.
+    Otherwise it gives the literal words from the program on, and False. None means the wrappers run no program
+    (`_WRAPPER_NO_RUN`). Words the line does not spell out before the first wrapper are passed over."""
+    seq = _Tail(list(holed))
+    # words the line does not spell out BEFORE any wrapper are passed over, as in every earlier build: in
+    # `os.execv(path, ["curl", url])` the literal `curl` names the program
+    seq = seq[_first_spelled(seq):]
+    for _ in range(_WRAPPER_DEPTH):
+        if not seq:
+            return [], False
+        if _is_hole(seq[0]):
+            return [a for a in seq[1:] if _spelled(a)], True
+        if _argv_basename(seq[0]) not in ARGV_WRAPPERS:
             break
-        rest = list(elts[1:])
-        while rest and (rest[0].startswith("-") or "=" in rest[0] or re.fullmatch(r"[\d.]+[smhd]?", rest[0])):
-            rest = rest[1:]
-        if not rest:
-            return out
-        elts = rest
+        name = _argv_basename(seq[0])
+        takes = _WRAPPER_VALUE_OPTIONS.get(name, set())
+        own = _WRAPPER_POSITIONALS.get(name, 0)
+        rest = seq[1:]
+        split_done = False
+        uncertain = False                               # a word before this one whose meaning is not settled
+        while rest:
+            word = _full_long(name, rest[0])
+            if _unsettled_option(name, word) and not (name == "env" and _env_split_string(word, rest) is not None):
+                uncertain = True                         # an option whose arity its start does not settle
+                rest = rest[1:]
+                continue
+            if word in (_ARGV_HOLE, _ARGV_SPLIT_HOLE):
+                uncertain = True
+                # followed by one of this wrapper's own options, a setting, a number or `--`, it is an option (or the
+                # wrapper's own argument, `timeout DURATION`); under `env`, followed by a program name, it is a setting
+                # (NAME=value operands come before the program). Followed by an option of another program, it is the
+                # program.
+                after = rest[1] if len(rest) > 1 else _ARGV_HOLE
+                if not _is_hole(after) and (_wrapper_word(name, after) or (
+                        name == "env" and word == _ARGV_HOLE and not _option_like(after))):
+                    rest = rest[1:]
+                    if own and not _duration_like(name, after):
+                        # it is the wrapper's own argument (a number after it would be that argument instead), which
+                        # ends the options: the program follows, after a `--` if one is written
+                        own -= 1
+                        if not own:
+                            if rest and rest[0] == "--":
+                                # after the wrapper's own argument `--` is the command, which fails; but the word
+                                # the line does not spell out may as well be an option (`--foreground`), `--` ending
+                                # them, and then the own argument and the program follow (`timeout x -- 5 curl` runs
+                                # curl when x is `--foreground`, measured on GNU timeout 8.32): read that way
+                                own += 1
+                                rest = rest[1:]
+                            break
+                    continue
+                break
+            if _no_run_option(name, word) and not uncertain:
+                return None, False                       # (after an unsettled word it may be that word's value)
+            if name == "env":                            # a -S among the words is read too
+                split = _env_split_string(word, rest)   # its words are read again, settings and options too
+                if split is _ENV_REJECTED:
+                    return None, False                   # env refuses the string and runs nothing
+                if split is not None:
+                    rest = _Tail(split)
+                    continue
+                if _env_setting(word):
+                    # env's options end at its first operand, and `NAME=value` is one: what follows the settings is
+                    # the command, whatever it looks like (`env A=1 -u X cmd` runs `-u`)
+                    while rest and _env_setting(rest[0]):
+                        rest = rest[1:]
+                    break
+            if word == "--":                             # options end; `env -- A=1 cmd` still sets A
+                rest = rest[1:]
+                while name == "env" and rest and rest[0] != _ARGV_HOLE and "=" in rest[0]:
+                    rest = rest[1:]
+                form = _WRAPPER_POSITIONAL_FORM.get(name)
+                if own and form is not None and rest and _spelled(rest[0]) and not form.fullmatch(rest[0]) \
+                        and not uncertain:
+                    return None, False           # `timeout -- -s cmd`: `-s` is the duration, refused
+                break
+            if own and _duration_like(name, word):   # `timeout 5`: the duration is its own argument,
+                rest, own = rest[1:], own - 1                  # and the program follows it
+                if not own:
+                    if rest and rest[0] == "--":
+                        return None, False       # `timeout 5 -- cmd` runs `--`, which fails: nothing runs
+                    break
+                continue
+            if not _option_like(word):
+                form = _WRAPPER_POSITIONAL_FORM.get(name)
+                if own and form is not None and _spelled(word) and not form.fullmatch(word) and not uncertain:
+                    return None, False           # `timeout git fetch`: not a duration, refused, nothing runs
+                break
+            if not _wrapper_word(name, word) and _ARGV_VALUE not in word:
+                uncertain = True                         # an option no manual lists: its arity is not known
+            if _ARGV_VALUE in word:                      # a settled start: its value is attached
+                rest = rest[1:]
+                continue
+            rest = rest[2:] if _takes_next_word(word, takes, _WRAPPER_ATTACHED_OPTIONAL.get(name, ())) else rest[1:]
+        if own and rest[own:own + 1] == ["--"]:
+            return None, False                   # `chroot / -- cmd`: after NEWROOT, `--` is the command
+        seq = rest[own:]
+    else:
+        if seq and not _is_hole(seq[0]) and _argv_basename(seq[0]) in ARGV_WRAPPERS:
+            return [a for a in seq if _spelled(a)], True     # more wrappers than are followed
+    if seq and _is_hole(seq[0]):
+        return [a for a in seq[1:] if _spelled(a)], True
+    return [a for a in seq if _spelled(a)], False
+
+
+def _program_parses(holed: list[str]) -> list[list[str]]:
+    """The other places the program could start, for the options whose arity is not known: an option no list names, an
+    option whose value is optional (`_WRAPPER_OPTIONAL_VALUE`) and a word the line does not spell out may each be
+    followed by its value or by the program. Documented values and a wrapper's own argument are skipped as in
+    `_principal_reading`. Gives the literal words from each candidate program on, at most `_PARSE_LIMIT` of them."""
+    out = _Parses()
+    steps = [0]
+
+    def parse(seq: list[str], depth: int, nest: int = 0) -> None:
+        seq = seq[_first_spelled(seq):]
+        steps[0] += 1
+        if not seq or len(out) >= _PARSE_LIMIT or steps[0] > _PARSE_STEPS or nest > _PARSE_NEST:
+            if seq:                              # stopped with words left to read: the search did not finish
+                out.exhausted = True
+            return
+        if depth >= _WRAPPER_DEPTH or _argv_basename(seq[0]) not in ARGV_WRAPPERS:
+            lits = [a for a in seq if _spelled(a)]
+            if lits not in out:
+                out.append(lits)
+            return
+        name = _argv_basename(seq[0])
+        takes = _WRAPPER_VALUE_OPTIONS.get(name, set())
+        optional = _WRAPPER_OPTIONAL_VALUE.get(name, set())
+
+        def own_done(rest: list[str], own_args: int, k: int, over: bool = False) -> None:
+            """The word before `rest` was the wrapper's own argument. The last one ends its options: the program
+            follows (after a `--`, unless options already ended)."""
+            if own_args > 1:
+                walk(rest, False, own_args - 1, k + 1, over)
+            elif rest[:1] != ["--"]:
+                parse(rest, depth + 1, k + 1)    # (a `--` here is the command, which fails: nothing runs)
+
+        def walk(rest: list[str], maybe_value: bool, own_args: int, k: int, over: bool = False) -> None:
+            steps[0] += 1
+            if not rest or len(out) >= _PARSE_LIMIT or steps[0] > _PARSE_STEPS or k > _PARSE_NEST:
+                if rest:                         # stopped with words left to read: the search did not finish
+                    out.exhausted = True
+                return
+            word = rest[0] if over else _full_long(name, rest[0])
+            if not over and _no_run_option(name, word) and not maybe_value:
+                return                           # `sudo -lu root cmd`: no program runs on this reading
+            if name == "env" and not over:
+                split = _env_split_string(word, rest)
+                if split is _ENV_REJECTED:
+                    return                       # env refuses the string and runs nothing
+                if split is not None:            # `env -S STRING`: its words, read again
+                    walk(split, False, own_args, k + 1)
+                    return
+                if _env_setting(word):
+                    walk(rest[1:], False, own_args, k + 1, True)    # the first operand ends env's options
+                    if maybe_value:                  # or it is the value of an option of unknown arity before it
+                        walk(rest[1:], False, own_args, k + 1)
+                    return
+            if over and name == "env" and "=" in word and not word.startswith("-"):
+                walk(rest[1:], False, own_args, k + 1, over)   # `env -- A=1 cmd` still sets A
+                return
+            if over and not _is_hole(word):              # after `--` every word is an operand
+                if own_args:
+                    form = _WRAPPER_POSITIONAL_FORM.get(name)
+                    if form is None or form.fullmatch(word):
+                        own_done(rest[1:], own_args, k, True)
+                else:
+                    parse(rest, depth + 1, k + 1)
+                return
+            if _unsettled_option(name, word):            # an option whose start does not settle its arity
+                walk(rest[1:], True, own_args, k + 1, over)
+                return
+            if word in (_ARGV_HOLE, _ARGV_SPLIT_HOLE):   # an unknown word: perhaps an option whose value follows,
+                walk(rest[1:], True, own_args, k + 1, over)
+                if own_args:                             # or the wrapper's own argument
+                    own_done(rest[1:], own_args, k, over)
+            elif word == "--":                           # options end: what follows is read as operands only
+                walk(rest[1:], False, own_args, k + 1, True)
+                if maybe_value:                          # or it is the value of an option of unknown arity before
+                    walk(rest[1:], False, own_args, k + 1)   # it, and options go on (`env -u -- -v cmd`)
+            elif own_args and _duration_like(name, word):   # `timeout 5`
+                own_done(rest[1:], own_args, k)
+                if maybe_value:                          # or the value of an option of unknown arity before it
+                    walk(rest[1:], False, own_args, k + 1)
+            elif _option_like(word):
+                if word in optional:                     # its value may follow or not
+                    walk(rest[1:], True, own_args, k + 1)
+                elif _takes_next_word(word, takes, _WRAPPER_ATTACHED_OPTIONAL.get(name, ())):
+                    walk(rest[2:], False, own_args, k + 1)
+                else:                                    # a documented flag and an attached value take no value
+                    walk(rest[1:], word.startswith("-") and "=" not in word
+                         and _ARGV_VALUE not in word and not _wrapper_word(name, word)
+                         and not _attached_value(word, takes), own_args, k + 1)
+            elif _is_hole(word):                         # a spelled-out start in the program's place: unknown word
+                walk(rest[1:], True, own_args, k + 1)
+            elif own_args:                               # the wrapper's own argument (`chroot NEWROOT`)
+                form = _WRAPPER_POSITIONAL_FORM.get(name)
+                if form is None or form.fullmatch(word):  # (`timeout git`: refused, nothing runs on this reading)
+                    own_done(rest[1:], own_args, k)
+                if maybe_value:                          # or the value of an option of unknown arity before it
+                    walk(rest[1:], False, own_args, k + 1)
+            else:
+                parse(rest, depth + 1, k + 1)            # the program starts here
+                if maybe_value:                          # or this word is the value of an option of unknown arity
+                    walk(rest[1:], False, own_args, k + 1)
+
+        walk(seq[1:], False, _WRAPPER_POSITIONALS.get(name, 0), nest)
+
+    parse(list(holed), 0)
+    return out
+
+
+def _could_start(holed: list[str], i: int) -> bool:
+    """Whether word `i` of an argv can be the program under some reading of the wrappers before it: the word before it
+    is a wrapper, an option or a word the line does not spell out, or that option's value, or a wrapper's own argument.
+    A word after the program has started is that program's argument under every reading."""
+    for back in (1, 2, 3):
+        if i - back < 0:
+            return True
+        prev = holed[i - back]
+        if _is_hole(prev) or _option_like(prev) or _argv_basename(prev) in ARGV_WRAPPERS:
+            return True
+    return False
+
+
+def _python_target(rest: list[str], placed: bool = True, launcher: bool = False) -> tuple | None:
+    """What a Python interpreter runs, read from its own options as it reads them: `("-c", code)`, `("-m", module,
+    index after it)`, or None for a script, `-` or nothing. A `-c` after `-m mod` or a script name is that program's
+    argument, not the interpreter's (`python -m mod -c x`, `python tool.py bash -c x`). Handles clusters (`-Bc CODE`,
+    `-BW ignore`), attached values (`-cCODE`, `-mpip`), options that take a value (`-W`, `-X`), and an unlisted long
+    option that may take one (`--profile x`). A word the line does not spell out is the value of a `-W` or `-X`
+    before it, and anywhere else may be one of the interpreter's flags, so a `-c` after it is still read."""
+    flags = "bBdEiIOPqRsStuvx"
+    pending = False                              # an unlisted long option just read: the next word may be its value
+    k = 0
+    while k < len(rest):
+        w = rest[k]
+        if _is_hole(w):
+            k += 1                               # a word the line does not spell out may be one of its flags (`-u`):
+            pending = False                      # a `-c` after it is read, as before; or it was the value pending
+            continue
+        m = re.fullmatch(rf"-[{flags}]*([cm])(.*)", w, re.S)
+        if m:
+            if m.group(2):                       # `-cCODE`, `-Bcimport x`, `-mpip`
+                return ("-c", m.group(2)) if m.group(1) == "c" else ("-m", m.group(2), k + 1)
+            if k + 1 >= len(rest):
+                return None
+            if _is_hole(rest[k + 1]):
+                return ("-c?", k + 1) if m.group(1) == "c" else None   # code the line does not spell out in full
+            return ("-c", rest[k + 1]) if m.group(1) == "c" else ("-m", rest[k + 1], k + 1)
+        if launcher and (w.startswith("-V:") or re.fullmatch(r"-\d+(?:\.\d+)*t?(?:-(?:32|64|arm64))?", w)):
+            k += 1                               # the `py` launcher's version selector (`py -V:3.14`, `py -3.14t`);
+            continue                             # python itself refuses `-V:3.14` (a usage error)
+        if w == "--" or re.fullmatch(rf"-[{flags}]*[hV?].*", w, re.S) \
+                or w in ("--version", "--help", "--help-env", "--help-xoptions", "--help-all") \
+                or w.startswith("--check-hash-based-pycs="):
+            # `--`: the next word is a script, whatever it looks like; `-h`, `-V`, `--help...`: prints and exits;
+            # `--check-hash-based-pycs=x`: refused (the value is the next word)
+            return None
+        if re.fullmatch(rf"-[{flags}]*[WX]", w) or w == "--check-hash-based-pycs":
+            # takes the next word, whatever it is (`-W -c`: `-c` is the value); in a reading whose words the line
+            # does not place (`env -S "python3 -W ${W} -c CODE"`), a `-c` after it may follow a value that was dropped
+            k += 1 if not placed and k + 1 < len(rest) and rest[k + 1] in ("-c", "-m") else 2
+            pending = False
+            continue
+        if w.startswith("--") and "=" not in w:
+            pending = True                       # `ipython --profile x -c ...`, `pypy3 --jit off -c ...`
+            k += 1
+            continue
+        if w.startswith("-") and w != "-":
+            pending = False
+            k += 1
+            continue
+        if pending:
+            pending = False                      # the unlisted long option's value
+            k += 1
+            continue
+        return None                              # a script (or `-`): its words are its own
+    return None
+
+
+def _holes_start(holed: list[str], elts: list[str]) -> int | None:
+    """Where in the argv a reading starts: the reading lists only spelled-out words, so it is the spelled-out words
+    of the argv from that place to the end. None when it is not."""
+    if not elts:
+        return None
+    at = [j for j, w in enumerate(holed) if _spelled(w)]
+    m = len(at) - len(elts)
+    if m < 0 or [holed[j] for j in at[m:]] != elts:
+        return None
+    return at[m]
+
+
+def _with_holes(holed: list[str], elts: list[str]) -> list[str]:
+    """The words of a reading from its program on, with the words the line does not spell out put back where they
+    stand (a reading lists only spelled-out words); `elts` itself when it cannot be placed in the argv."""
+    j = _holes_start(holed, elts)
+    return elts if j is None else holed[j:]
+
+
+def _child_code(words: list[str]) -> str | None:
+    """The code a reading hands a child interpreter (`python -c CODE`), when the program is one and the code is
+    spelled out; None otherwise."""
+    if not words or not _PYTHON_EXE_RE.match(_argv_basename(words[0])):
+        return None
+    target = _python_target(words[1:], launcher=_argv_basename(words[0]) in ("py", "pyw"))
+    return target[1] if target and target[0] == "-c" else None
+
+
+class _Parses(list):
+    """The parses, and whether the search stopped on its step or depth bound before it was done."""
+    exhausted = False
+
+
+def _attached_value(word: str, takes: set) -> bool:
+    """`-n5`, `-uroot`: a single-dash cluster whose option taking a value has it attached, so nothing follows."""
+    if len(word) <= 2 or word[0] != "-" or word[1] == "-":
+        return False
+    for k, letter in enumerate(word[1:], start=1):
+        if "-" + letter in takes:
+            return k < len(word) - 1
+    return False
+
+
+def _is_unlisted_program(exe: str) -> bool:
+    """A program this tool has no rule for."""
+    return not (exe == "git" or exe in SHELL_INTERPRETERS or _PYTHON_EXE_RE.match(exe) or exe in _ARGV_SCRIPT_JUDGED
+                or exe in PY_NET_BINARIES or exe in _BROWSER_OPENERS or exe in ARGV_WRAPPERS)
+
+
+# Kinds an alternative parse must reach for the line to be flagged: what leaves the machine, not an address alone, a
+# call to this machine or a listener.
+_ALT_PARSE_KINDS = {"subprocess-net-binary", "git-remote", "subprocess-shell", "network-call", "script-network-word"}
+
+
+def _unsettled_executable(rel: str, lineno: int, caller: str, argv: list[str],
+                          local_modules: frozenset[str]) -> list[Finding]:
+    """`executable=` names the program and the line does not spell it out. Read as the argv's own first word, a line
+    that reaches the network gets one `unresolved-call` naming that word; otherwise an address on another machine
+    handed to the unknown program is `external-url`. Nothing is said of what the program does."""
+    first = _unmark(argv)[0] if argv else _ARGV_HOLE
+    if first != _ARGV_HOLE:
+        found = [f for f in _argv_findings(rel, lineno, caller, argv, local_modules, record=False)
+                 if f.kind in _ALT_PARSE_KINDS or f.kind in ("network-import", "network-call")]
+        if found:
+            return [Finding(rel, lineno, "unresolved-call",
+                            f"{caller}([...], executable=...): the program is named by `executable=`, which the line "
+                            f"does not spell out; read as the argv's first word {_argv_basename(first)!r}, the line "
+                            f"{found[0].kind}")]
+    if any(URL_RE.search(a) and _has_external_url(a) for a in _unmark(argv)):
+        return [Finding(rel, lineno, "external-url",
+                        f"{caller}([...], executable=...): a program the line does not spell out is handed an address "
+                        "on another machine; what it does with it is NOT resolved")]
+    return []
+
+
+def _argv_findings(rel: str, lineno: int, caller: str, elts: list[str],
+                   local_modules: frozenset[str] = frozenset(), record: bool = False) -> list[Finding]:
+    token = _ARGV_MARKED.set(list(elts))
+    try:
+        return _argv_findings_marked(rel, lineno, caller, elts, local_modules, record)
+    finally:
+        _ARGV_MARKED.reset(token)
+
+
+def _argv_findings_marked(rel: str, lineno: int, caller: str, elts: list[str],
+                          local_modules: frozenset[str] = frozenset(), record: bool = False) -> list[Finding]:
+    """Findings for a literal argv: a network binary, a git remote subcommand, a shell
+    interpreter handed a command string, or a child interpreter handed a module or code.
+    After wrappers, the program is found as their syntax reads it (`_principal_reading`), and the findings are that
+    reading's. Where it finds nothing and a parse that reads an option of unknown arity the other way reaches the
+    network (`_program_parses`), the line gets one `unresolved-call` that says so and names that program."""
+    marked = _for_readings(list(elts))
+    holed = _unmark(marked)                             # what every rule but the wrapper readings sees
+    lead = holed[_first_spelled(holed)] if _first_spelled(holed) < len(holed) else ""
+    wrapped = _argv_basename(lead) in ARGV_WRAPPERS     # `os.execv(path, ["sudo", ...])`: after the path
+    lits, unknown = _principal_reading(marked)
+    if lits is None:                                    # `sudo -l cmd`, `command -v cmd`: no program runs
+        return []
+    if lits and URL_RE.search(lits[0]) and not unknown:   # an address where the program would be: unknown program
+        lits, unknown = lits, True
+    out: list[Finding] = []
+    if unknown:
+        # the program is a word the line does not spell out: only an address handed to it can be said
+        if record and holed[0] != _ARGV_HOLE and any(URL_RE.search(a) and _has_external_url(a) for a in lits):
+            out.append(Finding(rel, lineno, "external-url",
+                               f"{caller}([...]): a program the line does not settle is handed an address on "
+                               "another machine; what it does with it is NOT resolved"))
+    elif lits:
+        out = _argv_findings_at(rel, lineno, caller, lits, holed, local_modules, record)
+        if any(f.kind != "external-url" for f in out):   # a rule that names what the program does says more
+            out = [f for f in out if f.kind != "external-url"]
+    read_codes: set[str] = set()             # the code strings already read in a child interpreter on this line
+    parses = None
+    if (not out or all(f.kind == "external-url" for f in out)) and wrapped:
+        parses = _program_parses(marked)
+        for other in parses:
+            if not other or (other == lits and not unknown):   # the principal reading itself
+                continue
+            # the code a child interpreter is handed is read in the first parse that reaches it, so a reading that
+            # leaves the program unknown never leaves that code unread; a later parse reaching the same code skips it,
+            # one reaching other code reads that
+            code = _child_code(other)
+            deep = code is not None and code not in read_codes
+            if deep:
+                read_codes.add(code)
+            found = [f for f in _argv_findings_at(rel, lineno, caller, other, holed, local_modules, False,
+                                                  shallow=not deep) if deep or f.kind in _ALT_PARSE_KINDS]
+            if found and deep and unknown:
+                # the program is a word the line does not spell out, and read as an option it is this interpreter:
+                # what its code does is reported as such
+                out = [Finding(rel, lineno, f.kind, f"in the code a child interpreter is handed after these wrappers: "
+                               f"{f.detail}") for f in found]
+                break
+            if found:
+                out = [f for f in out if f.kind != "external-url"]
+                out.append(Finding(rel, lineno, "unresolved-call",
+                                   f"{caller}([...]): which word is the program depends on how the wrappers' options "
+                                   f"are read; read another way, it runs {_argv_basename(other[0])!r} "
+                                   f"({found[0].kind}{' in the code it is handed' if deep else ''})"))
+                break
+        else:
+            if all(f.kind == "external-url" for f in out) and getattr(parses, "exhausted", False):
+                # too many readings to settle the program: each literal word that could start a command is read as
+                # the program, unless a wrapper's manual makes it the value of the option before it
+                tried, scope = 0, None                  # `scope`: the wrapper whose options the words now are
+                for i, w in enumerate(holed):
+                    if w == _ARGV_HOLE:
+                        continue
+                    base = _argv_basename(w)
+                    if base in ARGV_WRAPPERS:
+                        scope = base
+                        continue
+                    # (the word before is read where it stands, a word the line does not spell out included)
+                    if _option_like(w) or (i and scope and holed[i - 1] in _WRAPPER_VALUE_OPTIONS.get(scope, ())):
+                        continue
+                    if URL_RE.search(w) or not _could_start(holed, i):
+                        continue                         # an address, or a word after the program has started
+                    if tried >= _FALLBACK_WORDS:
+                        # more candidates than are read: a program this tool has a rule for among the rest (a network
+                        # program, git, a shell, an interpreter, a browser opener) flags it
+                        named = next((_argv_basename(holed[j]) for j in range(i, len(holed))
+                                      if holed[j] != _ARGV_HOLE and not URL_RE.search(holed[j])
+                                      and _could_start(holed, j) and _argv_basename(holed[j]) not in ARGV_WRAPPERS
+                                      and not _is_unlisted_program(_argv_basename(holed[j]))), None)
+                        if named:
+                            out = [f for f in out if f.kind != "external-url"]
+                            out.append(Finding(rel, lineno, "unresolved-call",
+                                               f"{caller}([...]): too many readings of these wrappers' options to "
+                                               f"settle which word is the program; the line names {named!r}"))
+                        break
+                    tried += 1
+                    tail = [x for x in holed[i:] if x != _ARGV_HOLE]
+                    # the code a child interpreter is handed is read once per distinct code string
+                    code = _child_code(tail)
+                    deep = code is not None and code not in read_codes
+                    if deep:
+                        read_codes.add(code)
+                    found = [f for f in _argv_findings_at(rel, lineno, caller, tail, holed, local_modules,
+                                                          False, shallow=not deep)
+                             if f.kind in _ALT_PARSE_KINDS or f.kind in ("network-import", "network-call")]
+                    if found:
+                        out = [f for f in out if f.kind != "external-url"]
+                        out.append(Finding(rel, lineno, "unresolved-call",
+                                           f"{caller}([...]): too many readings of these wrappers' options to settle "
+                                           f"which word is the program; read from {base!r}, the line "
+                                           f"{found[0].kind}"))
+                        break
+    # a program on no list is named in `unlisted_programs` as the wrappers' syntax reads it, and only when the line
+    # names it: never a word the line does not spell out, an empty name, an option word, a setting or an address
+    sink = _PROGRAM_SINK.get()
+    # and not on a line whose program depends on the reading
+    ambiguous = any(f.kind == "unresolved-call" for f in out)
+    if (record and sink is not None and lits and not unknown and not ambiguous and holed and holed[0] != _ARGV_HOLE
+            and wrapped):
+        # after wrappers whose options leave the program's place open, the line does not name one program
+        readings = parses if parses is not None else _program_parses(marked)
+        starts = {other[0] for other in readings if other and not URL_RE.search(other[0])}
+        ambiguous = bool(starts - {lits[0]}) or getattr(readings, "exhausted", False)
+    if record and sink is not None and lits and not unknown and not ambiguous and holed and holed[0] != _ARGV_HOLE:
+        exe = _argv_basename(lits[0])
+        if (exe.strip() and not exe.startswith("-") and "=" not in exe and not URL_RE.search(lits[0])
+                and not re.fullmatch(r"[\d.]+[smhd]?", exe) and _is_unlisted_program(exe)):
+            sink.add(exe)
+    return out
+
+
+def _argv_findings_at(rel: str, lineno: int, caller: str, elts: list[str], holed: list[str],
+                      local_modules: frozenset[str], record: bool, shallow: bool = False) -> list[Finding]:
+    """The findings for one reading: `elts` are the literal words from the program on, `holed` the whole argv with a
+    placeholder where a word is not a literal. `shallow` skips the code in a `python -c` string, so that a parse read
+    only to flag the line does not re-read nested code once per parse."""
+    out: list[Finding] = []
     exe = _argv_basename(elts[0])
+    if record and holed and holed[0] != _ARGV_HOLE and _is_unlisted_program(exe):
+        # a program started from Python that this tool has no rule for: an address on another machine handed to it
+        # is reported, since what the program does with it is not known
+        if any(URL_RE.search(a) and _has_external_url(a) for a in elts[1:]):
+            out.append(Finding(rel, lineno, "external-url",
+                               f"{caller}([{exe!r}, ...]): a program this tool has no rule for is handed an address "
+                               "on another machine; what it does with it is NOT resolved"))
     if exe in _BROWSER_OPENERS and any(re.match(r"(?i)(?:https?|ftp)://", a) and _has_external_url(a)
                                        for a in elts[1:]):
         # `['xdg-open', 'https://...']`: the default browser fetches the address
@@ -4661,28 +5940,70 @@ def _argv_findings(rel: str, lineno: int, caller: str, elts: list[str],
                            f"{caller}([{exe!r}, ...]): a shell interpreter is handed a command string{extra}"))
     elif _PYTHON_EXE_RE.match(exe):
         rest = elts[1:]
-        if "-m" in rest:
-            at = rest.index("-m") + 1
-            module = rest[at] if at < len(rest) else ""
-            # `python -m pip cache purge`, `python -m pip --version`: the module asked about itself
-            local_only = _asks_about_itself(rest[at + 1:])
+        start = _holes_start(holed, elts)
+        # a reading the argv cannot place (an `env -S` string's words) may have dropped a value the line does not
+        # spell out (`${W}`, which env removes when W is unset): only then may a `-c` after `-W` follow that value
+        marked = _ARGV_MARKED.get() or ()
+        dropped = start is None and any("${" in w or _ARGV_VALUE in w for w in marked)
+        words = (holed[start:] if start is not None else elts)[1:]
+        launcher = _argv_basename(elts[0]) in ("py", "pyw")
+        target = _python_target(words, launcher=launcher)
+        if dropped and not (target and target[0] == "-c"):
+            # the reading that takes every word as written found no code; the one in which a value env dropped stood
+            # before the `-c` may (both are possible: an unset `${W}` drops its word, a set one keeps it)
+            target = _python_target(words, placed=False, launcher=launcher) or target
+        if target and target[0] == "-c?" and not shallow and start is not None:
+            # `-c f"import socket; socket.create_connection(({host}, 80))"`: the written parts are read, each value
+            # standing as a name, when that parses
+            marked = _ARGV_MARKED.get()
+            template = marked[start + 1 + target[1]] if marked is not None and len(marked) == len(holed) \
+                and start + 1 + target[1] < len(marked) else None
+            if template is not None and _ARGV_VALUE in template:
+                written = template.replace(_ARGV_VALUE, "_")
+                try:
+                    ast.parse(written)
+                except (SyntaxError, ValueError, RecursionError, MemoryError):
+                    written = None
+                if written is not None:
+                    target = ("-c", written)
+        if target and target[0] == "-m":
+            at = target[2]
+            module = target[1]
+            # `python -m pip cache purge`, `python -m pip --version`: the module asked about itself (its spelled-out
+            # words, counted in the argv the target was read from)
+            words = (holed[start:] if start is not None else elts)[1:]
+            local_only = _asks_about_itself([w for w in words[at + 1:] if _spelled(w)])
             if not local_only and (module in _PYTHON_NET_MODULES_FOR_M or _classify_module(module) == "network"):
                 out.append(Finding(rel, lineno, "subprocess-net-binary",
                                    f"{caller}([python, '-m', {module!r}, ...]): a child interpreter runs a "
                                    "network-capable module"))
-        if "-c" in rest and rest.index("-c") + 1 < len(rest):
-            code = rest[rest.index("-c") + 1]
-            for f in _check_python(Path(rel), rel, local_modules, None, source=code):
-                out.append(Finding(rel, lineno, f.kind,
-                                   f"in a -c string handed to a child interpreter: {f.detail}"))
+        if target and target[0] == "-c" and not shallow:
+            code = target[1]
+            cache = _CHILD_CODE_CACHE.get()
+            # what the code yields depends on the file it is read for (a module of the tree's own name imports
+            # itself) and on whether that file names a database host elsewhere
+            key = (code, frozenset(local_modules), rel, bool(_DB_HOST_ELSEWHERE.get()))
+            if cache is not None and key in cache:
+                found = cache[key]               # the same code on another line of this audit: read once
+            else:
+                found = [(f.kind, f.detail) for f in _check_python(Path(rel), rel, local_modules, None, source=code)]
+                if cache is not None:
+                    cache[key] = found
+            for kind, detail in found:
+                out.append(Finding(rel, lineno, kind, f"in a -c string handed to a child interpreter: {detail}"))
     elif exe in _ARGV_SCRIPT_JUDGED:
         # package managers and probes are judged by the rules their command line is judged by on a script line, so
         # `['npm', 'install']` and `['ping', '127.0.0.1']` say what `npm install` and `ping 127.0.0.1` say; a
         # subcommand that acts on this machine (`npm run build`, `pip uninstall x`) or an offline or version request
         # is silent, and one that is not spelled out or not known keeps the claim a network program gets
-        start = len(holed) - len(elts) + 1 if holed[-len(elts):] == elts else holed.index(elts[0]) + 1
-        args = holed[start:] if _ARGV_HOLE in holed else elts[1:]
-        words = ["X" if a == _ARGV_HOLE or not a or re.search(r"\s|['\"`$;&|<>()]", a) else a for a in args]
+        if holed[-len(elts):] == elts:
+            start = len(holed) - len(elts) + 1
+        elif elts[0] in holed:
+            start = holed.index(elts[0]) + 1
+        else:
+            start = None                         # read from inside an `env -S` string: the reading's own words
+        args = holed[start:] if start is not None and _ARGV_HOLE in holed else elts[1:]
+        words = ["X" if _is_hole(a) or not a or re.search(r"\s|['\"`$;&|<>()]", a) else a for a in args]
         command = " ".join([exe] + words)
         found = [f for f in _check_script(Path("argv.sh"), rel, text=command + "\n") if f.kind != "external-url"]
         # `os.execvp("brew", ["brew", x])` repeats the program as its argv[0]: that word is not a subcommand
@@ -8137,7 +9458,7 @@ def python_units(path: Path) -> list[tuple[str, int | None]] | None:
         return [(src, None)] + exported_magic_units(src)
     if suffix in PTH_EXTS and _is_text_pth(path):
         lines = _reads.read_text(path).splitlines()
-        return [("\n".join(ln if re.match(r"import[ \t]", ln) else "" for ln in lines) + "\n", None)]
+        return [("\n".join(ln.strip() if _pth_executes(ln) else "" for ln in lines) + "\n", None)]
     if suffix in NOTEBOOK_EXTS:
         try:
             data = load_json(_reads.read_text(path))
@@ -8478,27 +9799,63 @@ def _is_text_pth(path: Path) -> bool:
     return True
 
 
+def _pth_executes(line: str) -> bool:
+    """Whether some supported Python's `site` runs this `.pth` line: it begins with `import` and a space or a tab
+    once surrounding whitespace is removed (3.15 strips first; earlier versions run the unindented ones)."""
+    return line.strip().startswith(("import ", "import\t"))
+
+
+def _check_start(path: Path, rel: str) -> list[Finding]:
+    """Entry points of a `.start` file (PEP 829). Python 3.15's `site` calls each `pkg.mod:callable` line at interpreter
+    start when the file is in a site directory. Blank lines and comments are skipped; a line of any other shape is not
+    an entry point and is not reported. The code an entry point names is analysed only where it is in this tree."""
+    out: list[Finding] = []
+    try:
+        # `site` reads a `.start` file as UTF-8 (a BOM allowed) and skips one that does not decode
+        text = _reads.read_bytes(path).decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return out
+    for number, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#") or not _START_ENTRY_RE.fullmatch(line):
+            continue
+        shown = line if len(line) <= 120 else line[:117] + "..."
+        out.append(Finding(rel, number, "startup-exec",
+                           f"{shown}: a .start entry point is called by Python's site module at every interpreter "
+                           "start (Python 3.15 and later) when this file is in a site directory; code it names "
+                           "outside this tree was NOT analysed"))
+    return out
+
+
 def _check_pth(path: Path, rel: str, local_modules: frozenset[str] = frozenset(),
                shadowed: set[str] | None = None, unlisted: set[str] | None = None,
                own_names: frozenset[str] = frozenset(),
                importable: frozenset[str] | None = None) -> list[Finding]:
     """Lines of a `.pth` file that `site` executes, analysed as the Python they are.
 
-    `site.addpackage` runs `exec(line)` for every line starting with `import`
-    followed by a space or a tab; every other non-comment line is a directory to
-    add to `sys.path`. Each executed line is reported as `startup-exec`, which says
-    only that the line runs at interpreter start when the file sits in a site
-    directory. What the line does is then checked exactly like a `.py` file.
+    `site.addpackage` runs every line starting with `import` followed by a space or a
+    tab; every other non-comment line is a directory to add to `sys.path`. Up to 3.14 the
+    test is made on the line as written; 3.15 strips the line first, so an indented import
+    line runs as well. A line is reported when any of those versions runs it, so the report
+    is the same on all of them. Each executed line is reported as `startup-exec`, which says
+    only that the line runs at interpreter start when the file sits in a site directory.
+    What the line does is then checked exactly like a `.py` file.
     """
     out: list[Finding] = []
     text = _reads.read_text(path)
-    for number, line in enumerate(text.splitlines(), start=1):
-        if not line.startswith(("import ", "import\t")):
+    for number, raw in enumerate(text.splitlines(), start=1):
+        if not _pth_executes(raw):
             continue
+        line = raw.strip()
         shown = line if len(line) <= 120 else line[:117] + "..."
+        if raw.startswith(("import ", "import\t")):
+            when = ("a .pth line beginning with `import` is executed by Python's site module at every "
+                    "interpreter start")
+        else:
+            when = ("an indented .pth line beginning with `import` is executed by Python's site module at every "
+                    "interpreter start from Python 3.15 on (earlier versions skip it because of the indentation)")
         out.append(Finding(rel, number, "startup-exec",
-                           f"{shown}: a .pth line beginning with `import` is executed by "
-                           "Python's site module at every interpreter start when this file "
+                           f"{shown}: {when} when this file "
                            "is in a site directory; modules it imports from outside this "
                            "tree were NOT analysed"))
         for finding in _check_python(path, rel, local_modules, shadowed, source=line,
@@ -8998,6 +10355,15 @@ def _tree_digest(entries: list[tuple[str, str]]) -> str:
     return h.hexdigest()
 
 
+def report_dict(rep) -> dict:
+    """An audit report as the dict that is hashed, signed and written. `unlisted_programs` is left out when it names
+    nothing, so a report on a tree that starts no unlisted program is the report the previous release wrote."""
+    out = asdict(rep)
+    if not out.get("unlisted_programs"):
+        out.pop("unlisted_programs", None)
+    return out
+
+
 def reproducible_body(report_dict: dict) -> bytes:
     """The bytes behind `findings_digest` -- stable across runs and machines.
 
@@ -9006,6 +10372,8 @@ def reproducible_body(report_dict: dict) -> bytes:
     installed. The report keeps those directories and their file counts; the reproducible body leaves them out, so
     a fresh checkout of the same commit gives the same digest."""
     clean = {k: v for k, v in report_dict.items() if k not in _ISSUANCE_FIELDS}
+    if clean.get("unlisted_programs") == []:
+        del clean["unlisted_programs"]      # an empty list is the report that carries none (see `report_dict`)
     ns = clean.get("not_scanned")
     if isinstance(ns, dict) and "skipped_directories" in ns:
         skipped = ns.get("skipped_directories")
@@ -9018,6 +10386,8 @@ def reproducible_body(report_dict: dict) -> bytes:
 def canonical_body(report_dict: dict) -> bytes:
     """The exact bytes that are hashed and signed. Stable across processes."""
     clean = {k: v for k, v in report_dict.items() if k not in _SIG_FIELDS}
+    if clean.get("unlisted_programs") == []:
+        del clean["unlisted_programs"]      # an empty list is the report that carries none (see `report_dict`)
     return json.dumps(clean, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 
@@ -9249,6 +10619,8 @@ def verify_report(report_dict: dict, expected_root: str | None = None,
       UNSIGNED  - well-formed, self-consistent, and carries NO origin claim.
       TAMPERED  - body does not match its own hash, the signature is invalid, or
                   the document is not a well-formed report at all.
+
+    Raises ValueError when `expected_root` is given but is not 64 hex digits.
     """
     if not isinstance(report_dict, dict) or not _hash_matches(report_dict) or not findings_digest_matches(report_dict) \
             or not subject_matches(report_dict):
@@ -9278,6 +10650,10 @@ def verify_report(report_dict: dict, expected_root: str | None = None,
     body = canonical_body(report_dict)
     if isinstance(expected_root, str):
         expected_root = expected_root.strip().lower()
+        # A root that is not 64 hex digits is the caller's mistake, not evidence about the report: say so, as the
+        # command line does, instead of answering TAMPERED.
+        if len(expected_root) != 64 or any(c not in "0123456789abcdef" for c in expected_root):
+            raise ValueError("expected_root must be a public root of 64 hex digits")
     if not verify_any(body, sig, expected_root=expected_root):
         return False, "TAMPERED"
     return (True, "ATTESTED") if expected_root else (False, "UNVERIFIED")
@@ -9490,6 +10866,10 @@ def _audit(target: Path, label: str | None, signer: "MerkleSigner | None") -> Au
                 folder = parent
     # Python found inside another file (a script's `python -c`) adds its unknown imports to the same list
     sink_token = _UNLISTED_SINK.set((unlisted, own_names))
+    programs: set[str] = set()
+    programs_token = _PROGRAM_SINK.set(programs)
+    child_code_token = _CHILD_CODE_CACHE.set({})
+    shadow_token = _SHADOWING_MODULES.set(_tree_shadows_containers(target))
     ci_token = _CI_INCLUDED.set(ci_included)
     modules_token = _TREE_MODULES.set(_tree_module_names(walked_rels))
     extended_token = _EXTENDED_ROOTS.set(frozenset(extended))
@@ -9513,6 +10893,10 @@ def _audit(target: Path, label: str | None, signer: "MerkleSigner | None") -> Au
                     scanned += 1
                     findings += _check_pth(p, rel, local_modules, shadowed, unlisted, own_names, importable)
                     tree.append((rel, _file_digest(p)))
+                elif suffix in START_EXTS and _is_start_file(p) and _is_text_pth(p):
+                    scanned += 1
+                    findings += _check_start(p, rel)
+                    tree.append((rel, _file_digest(p)))
                 elif suffix in NOTEBOOK_EXTS:
                     scanned += 1
                     findings += _check_notebook(p, rel, local_modules, shadowed, unlisted, own_names, importable)
@@ -9532,7 +10916,8 @@ def _audit(target: Path, label: str | None, signer: "MerkleSigner | None") -> Au
                     findings += _check_markup(p, rel, unlisted_js)
                     tree.append((rel, _file_digest(p)))
                 elif (suffix in ARTIFACT_EXTS and not _artifact_name_on_text(p, suffix)) or (
-                        suffix in PTH_EXTS and not _is_text_pth(p)):
+                        suffix in PTH_EXTS and not _is_text_pth(p)) or (
+                        suffix in START_EXTS and _is_start_file(p) and not _is_text_pth(p)):
                     # git converts line endings in any file without a NUL byte (Cython source, a protocol-0 pickle): such a file
                     # is folded as text is, at any size (a large one as it is streamed)
                     tree.append((rel, _artifact_digest(p, suffix)))
@@ -9563,6 +10948,9 @@ def _audit(target: Path, label: str | None, signer: "MerkleSigner | None") -> Au
                 tree[:] = [e for e in tree if e[0] != rel] + [(rel, _UNREAD_DIGEST)]
     finally:
         _UNLISTED_SINK.reset(sink_token)
+        _PROGRAM_SINK.reset(programs_token)
+        _CHILD_CODE_CACHE.reset(child_code_token)
+        _SHADOWING_MODULES.reset(shadow_token)
         _CI_INCLUDED.reset(ci_token)
         _TREE_MODULES.reset(modules_token)
         _EXTENDED_ROOTS.reset(extended_token)
@@ -9588,6 +10976,7 @@ def _audit(target: Path, label: str | None, signer: "MerkleSigner | None") -> Au
     rep.shadowed_imports = sorted(shadowed)
     rep.unlisted_imports = sorted(unlisted)
     rep.unlisted_js_imports = sorted(unlisted_js)
+    rep.unlisted_programs = sorted(programs)
     rep.parser_python = f"{sys.version_info.major}.{sys.version_info.minor}"
     rep.files_scanned = scanned
     rep.findings = [asdict(f) for f in findings]
@@ -9600,7 +10989,7 @@ def _audit(target: Path, label: str | None, signer: "MerkleSigner | None") -> Au
     rep.subject_digest = _tree_digest(tree)
     rep.subject = [{"name": rep.target, "digest": {"sha3-256": rep.subject_digest}}]
     rep.findings_digest = hashlib.sha3_256(
-        reproducible_body(asdict(rep))).hexdigest()
+        reproducible_body(report_dict(rep))).hexdigest()
     # ORDER IS LOAD-BEARING. Identity fields are written BEFORE the body is
     # hashed and signed, so they are covered by both. Read from the signer's
     # own `algorithm` property, never hard-coded, so a report cannot name a
@@ -9608,11 +10997,11 @@ def _audit(target: Path, label: str | None, signer: "MerkleSigner | None") -> Au
     if signer is not None:
         rep.signature_algorithm = signer.algorithm
         rep.public_root = signer.public_root
-    ch, tag = _sign(asdict(rep))
+    ch, tag = _sign(report_dict(rep))
     rep.content_hash = ch
     rep.integrity_tag = tag
     if signer is not None:
-        rep.signature = signer.sign(canonical_body(asdict(rep)))
+        rep.signature = signer.sign(canonical_body(report_dict(rep)))
         # Belt and braces: the signature reports its own algorithm, and it must
         # agree with what we just signed. A mismatch means the signer lied
         # about itself, which is a bug, not a report to hand anyone.
@@ -9688,6 +11077,12 @@ def render_markdown(rep: AuditReport) -> str:
            + ". These third-party modules are on none of this tool's lists, so it says nothing "
              "about what they do. Check them against what you know they are."]
           if rep.unlisted_imports else []),
+        *([f"- **Programs started, and not known to this tool ({len(rep.unlisted_programs)}):** "
+           f"{', '.join(markdown_code(n, in_table=False) for n in rep.unlisted_programs[:40])}"
+           + (f", and {len(rep.unlisted_programs) - 40} more" if len(rep.unlisted_programs) > 40 else "")
+           + ". The Python in this tree starts these programs and they are on none of this tool's lists, so it says "
+             "nothing about what they do."]
+          if getattr(rep, "unlisted_programs", None) else []),
         *([f"- **JavaScript packages imported, and not known to this tool ({len(rep.unlisted_js_imports)}):** "
            f"{', '.join(markdown_code(n, in_table=False) for n in rep.unlisted_js_imports[:40])}"
            + (f", and {len(rep.unlisted_js_imports) - 40} more" if len(rep.unlisted_js_imports) > 40 else "")
@@ -9869,7 +11264,7 @@ def _main(args: argparse.Namespace) -> int:
         print("warning: no --key given; report will be UNSIGNED", file=sys.stderr)
     rep = audit(args.target, label=args.label, signer=signer)
     if args.json:
-        write_text(args.json, json.dumps(asdict(rep), indent=2))
+        write_text(args.json, json.dumps(report_dict(rep), indent=2))
     if args.md:
         write_text(args.md, render_markdown(rep))
     print(render_markdown(rep))

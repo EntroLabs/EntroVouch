@@ -12,6 +12,7 @@ These are errors before anything is signed:
 
 - an output whose folder does not exist, or an output that is a folder;
 - an output that is the signing key's own file, or another output of the same run;
+- an output that is a file of the scanned tree, or a hard link to one, and is not a file this tool wrote;
 - a CycloneDX `--serial` that is not `urn:uuid:` and a UUID.
 
 A file name that is not valid UTF-8 is written escaped. Text taken from the audited tree (names, paths, lines) is
@@ -61,7 +62,8 @@ classify it: a library whose algorithm is chosen at the call, a cipher mode, or 
 A Python file either tool cannot parse is listed in `files_not_parsed`. Its contents were not read, so the result
 cannot be `NOTHING-VULNERABLE-FOUND` or `NOTHING-FOUND`.
 
-A tree in which `key_provenance` read nothing but archives it could not open (an encrypted zip, a `.7z`, or an
+A tree in which `key_provenance` read nothing but archives it could not open (an encrypted zip, a zip member compressed with a method other than stored, deflate,
+bzip2 or lzma, such as zstd, a `.7z`, or an
 archive holding only such an archive) is `NOT-ANALYSED`, exit 2. An archive holding one it cannot open is listed as
 not fully read.
 

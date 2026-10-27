@@ -85,14 +85,18 @@ def pytest_collection_modifyitems(session, config, items):
 """
 
 
+# The child puts the plugin's folder on its own import path. PYTHONPATH would not do: a Python installed with a
+# `._pth` file (the embeddable distribution) ignores it, and the child then cannot load the plugin.
+_CHILD = "import sys; sys.path.insert(0, sys.argv[1]); import pytest; sys.exit(pytest.main(sys.argv[2:]))"
+
+
 def _run_this_file(tmp_path, order: str):
     (tmp_path / "order_plugin.py").write_text(_ORDER_PLUGIN, encoding="utf-8")
-    other = tmp_path / "test_other_module.py"
-    other.write_text("".join(f"def test_other_{i}():\n    pass\n\n\n" for i in range(20)), encoding="utf-8")
-    env = dict(os.environ, PYTHONPATH=str(tmp_path) + os.pathsep + os.environ.get("PYTHONPATH", ""),
-               PYTHONDONTWRITEBYTECODE="1", ENTROVOUCH_TEST_ORDER=order)
-    r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "order_plugin", "-p", "no:cacheprovider",
-                        "--setup-show", str(Path(__file__).resolve()), str(other)],
+    # The module this file's tests are interleaved with is in the repository, not in tmp_path: see its docstring.
+    other = REPO / "tests" / "order_companion.py"
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", ENTROVOUCH_TEST_ORDER=order)
+    r = subprocess.run([sys.executable, "-c", _CHILD, str(tmp_path), "-q", "-p", "order_plugin",
+                        "-p", "no:cacheprovider", "--setup-show", str(Path(__file__).resolve()), str(other)],
                        cwd=REPO, env=env, capture_output=True, text=True, timeout=900)
     return r, r.stdout + r.stderr
 

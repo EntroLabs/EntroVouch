@@ -25,7 +25,7 @@ from entrovouch.no_egress_auditor import (  # noqa: E402
     AuditReport, audit, canonical_body, reproducible_body, verify_report,
 )
 
-# the published motto an earlier version keyed a MAC with; kept here so the forgery it allowed stays refused
+# a public string: a MAC keyed by it proves nothing, so a report tagged with one must never verify
 _DEFAULT_COVENANT = "Optimize systems for people, not margin extraction. One Covenant. Always."
 from entrovouch.signer import (  # noqa: E402
     MerkleSigner, SignerError, verify_signature, _LEAF_TAG, _NODE_TAG,

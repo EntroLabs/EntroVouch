@@ -132,11 +132,14 @@ def test_statement_shape(dirty_report):
 
 
 def test_predicate_excludes_envelope_fields(dirty_report):
-    """The predicate is the claim; the envelope is not part of the claim."""
+    """The predicate is the claim; the envelope is not part of the claim. The signer the report names is part of
+    the signed body, so it stays in the predicate: a Statement whose signature block is removed still says it was
+    signed (see test_programs_started_and_containers.py)."""
     pred = to_statement(dirty_report)["predicate"]
-    for k in ("signature", "signature_algorithm", "public_root",
-              "content_hash", "subject"):
+    for k in ("signature", "content_hash", "integrity_tag", "subject"):
         assert k not in pred, f"{k} belongs to the envelope, not the predicate"
+    for k in ("signature_algorithm", "public_root"):
+        assert pred[k] == dirty_report[k]
     assert pred["verdict"] and "findings" in pred
     assert pred["scope_statement"], "limits travel with the claim"
 

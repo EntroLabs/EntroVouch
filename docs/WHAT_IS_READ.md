@@ -18,7 +18,9 @@ plain word and a space or straight after a tag's `>` is text. An element has tex
 somewhere (`</Name>`), so a type parameter list (`const pick: <T>(xs: T[]) => T`) is not taken for one, and a bare
 `<Name>` straight before `(` is read both as an element and as type parameters. The code the JSX reading finds is
 kept, and where it finds none the plain reading's code is used. Because the plain JavaScript reading also runs, the
-words of JSX text are read as code too: `<p>Don't fetch(u) here</p>` is reported as a call. Outside JSX every
+words of JSX text are read as code too: `<p>Don't fetch(u) here</p>` is reported as a call. A `fetch` method called on
+any object is `unresolved-call`, the file's own object literal included: whether the method is still the file's own at
+the call needs scope and data-flow analysis this reader does not do. Outside JSX every
 backquote opens a template; a backquote or `/*` never closed opens nothing, and neither does `/*` straight after
 a name (`src/*`): the code after it is still read. A regular expression is recognised by what precedes it, the `)` of an `if`, `while` or `for` condition included. This
 is a heuristic, not an ECMAScript parser. An import in a page's or component's `<script>` (an attribute may hold `<` and `>`), an Astro component's
@@ -93,7 +95,8 @@ names the npm package `x`; a `jsr:` package is listed in `unlisted_js_imports`.
   deploy`, `serverless deploy`, `heroku`, `hatch publish`, `flit publish`) and `ansible-playbook` are commands
   too, as are `uv run`, `hatch run` and `pixi run`, which make the environment first. **The programs are a
   list.** A program it does not name (an in-house deploy script, a tool newer than this build) gives no finding
-  and, unlike an unknown import, which `unlisted_imports` names, is not named in the report. The same program named elsewhere on a line, where a command
+  and, on a script line, unlike an unknown import, which `unlisted_imports` names, is not named in the report (a
+  program started from Python is named in `unlisted_programs`). The same program named elsewhere on a line, where a command
   could take it as an argument (`mytool curl x`, `--downloader wget x`), is
   `script-network-word`: reported, with a claim that stops at the name. A name in text the line
   only prints (`echo`, `printf`), a value written after `=` or `,`, and a download tool's name
@@ -193,13 +196,24 @@ names the npm package `x`; a `jsr:` package is listed in `unlisted_js_imports`.
   mark (Windows PowerShell runs a UTF-16 script, pip reads a UTF-16 requirements file); without a mark, as UTF-8, which is how pip reads it. Importing
   `_winapi` or `_posixsubprocess`, private modules that start processes directly, is reported. A local module shadows an import only when the scan reads
   it: a link or a link stand-in with that name shadows nothing.
+- **Programs started from Python** (`subprocess`, `os.exec*`, `os.spawn*`, `pty.spawn`,
+  `asyncio.create_subprocess_exec`) are judged by the program the call starts. That program is read through names
+  bound once, `executable=`, `sys.executable` and the wrappers before it (`sudo`, `env`, `env -S`, `timeout` and the
+  others), and code handed to a child interpreter is read. The full rules are in the 1.1.4 entry of
+  [CHANGELOG.md](../CHANGELOG.md#programs-started-from-python).
 
 ## `.pth` files, local modules and newer syntax
 
 - **`.pth` files are read as what they are.** Python runs every `.pth` line that begins
-  with `import` at interpreter start. Each such line is reported as `startup-exec` and
-  analysed like source. A `.pth` that an install step writes later is not in the tree and
-  is not seen. Binary files that share the extension (model checkpoints) are not scanned.
+  with `import` at interpreter start; from 3.15 the line is stripped first, so an indented
+  one runs too, and the report counts it on every version. Each such line is reported as
+  `startup-exec` and analysed like source. A `.pth` that an install step writes later is not
+  in the tree and is not seen. Binary files that share the extension (model checkpoints) are
+  not scanned.
+- **`.start` files are read too.** From 3.15 Python calls each `pkg.mod:callable` line of a
+  `.start` file in a site directory at interpreter start. Each such line is reported as
+  `startup-exec`; the code it names is analysed where it is in the tree. Lines of any other
+  shape are not entry points and are not reported.
 - **A local module of the same name is not a network import.** `motor.py` at the top of
   the audited tree shadows the package; the name is listed in `shadowed_imports` rather than
   vanished. Audit a folder above it and `motor.py` is no longer at the top, so `import motor`
@@ -275,10 +289,28 @@ names the npm package `x`; a `jsr:` package is listed in `unlisted_js_imports`.
   fetch-named methods given an address are reported as `network-call` only when the object they are called on
   traces back, within the file, to a network package (`requests.Session()`, a name bound by
   `with httpx.Client() as c`, a parameter annotated `httpx.Client`, `self.s` assigned from one).
-  When it does not (a parameter with no type, a fixture, a cache, a mapping, the project's own
-  helper), the call is `unresolved-call`: still reported, and the sentence says that whether it
-  reaches the network is not shown. Tracing stops at the file: a client handed in from another
-  file is not followed. A method named like asyncio's server or connection call is taken as
+  When it does not (a parameter with no type, a fixture, a container the file does not build itself, the project's
+  own helper), the call is `unresolved-call`: still reported, and the sentence says that whether it reaches the
+  network is not shown.
+
+  Two exceptions give no finding:
+  - `get` on a receiver whose last name is one a mapping usually has (`MAPPING_RECEIVERS` in the auditor: `environ`,
+    `env`, `config`, `cfg`, `conf`, `settings`, `defaults`, `options`, `opts`, `kwargs`, `params`, `headers`,
+    `data`, `cache`, `mapping`, `registry`, `meta`, `metadata`, `attrs`) is read as a lookup, whatever the name is
+    bound to. `def f(cache): cache.get("https://...")` therefore gives no finding, and a call on a network client
+    given one of these names (`cache = requests.Session()`) gets none at its line; the import of its package is still
+    reported. That is a detection limit.
+  - A method called on a container the file builds itself (a dict, list or set literal or comprehension, or a
+    `queue` or `collections` object bound once through an import the file does not rebind) is the container's own.
+    This holds only in a file that cannot change what that container or its module is, under the conditions the
+    1.1.4 entry of [CHANGELOG.md](../CHANGELOG.md) lists: the file reaches no part of the module system (`sys`,
+    `importlib`, `builtins`, `__import__` and the others), cannot rebind its names (`globals()[...] = ...`,
+    `from x import *`), uses no reflection a reading cannot follow (`setattr`, `vars`, `exec`, `mock.patch` and the
+    others), stores no attribute named like a method it calls on one of its containers, and sits in a tree with no
+    module named `queue`, `collections`, `_queue` or `_collections` outside `.git` and `node_modules`. Anywhere
+    else the call is `unresolved-call`.
+
+  Tracing stops at the file: a client handed in from another file is not followed. A method named like asyncio's server or connection call is taken as
   asyncio's in a file that uses asyncio or on an event loop; a server-named one on an object
   the file does not trace, with no asyncio in the file, is `unresolved-call`. An address with
   no host (`ftp:///x`) names neither this machine nor another one, and is `unresolved-call`. The SAX parser's `parse`
@@ -334,7 +366,7 @@ names the npm package `x`; a `jsr:` package is listed in `unlisted_js_imports`.
 
 - **A declared dependency is not a call site.** `stripe` in `pyproject.toml` is
   `declared-network-dependency`. Names the import list does not know stay invisible
-  here too: declared-intent uses the same list; it does not secretly complete it.
+  here too, because a declared dependency is matched against the same list.
   Manifests read: `pyproject.toml` (PEP 621, build requirements, dependency groups, dynamic dependencies and optional
   dependencies read from the files `[tool.setuptools.dynamic]` or Hatch's requirements-txt hook names, in the scope
   the manifest gives them (a file named like a development file is then the product's), and otherwise recorded as

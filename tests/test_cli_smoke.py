@@ -85,11 +85,12 @@ def test_the_only_egress_in_this_repo_is_the_deliberate_fixture():
     place for a genuine finding to hide.
     """
     r = _run("entrovouch.no_egress_auditor", str(REPO))
-    assert r.returncode == 1, (
+    assert r.returncode != 0, (
         "A repo-root audit came back CLEAN. The examples fixture is supposed to "
         "contain a deliberate network import - if it no longer does, the demo in "
         "examples/ is showing a reader nothing."
     )
+    assert r.returncode == 1, f"the repo-root audit exited {r.returncode}, not 1 (findings): {r.stderr[-800:]}"
     # Two places hold code that reaches for the network on purpose: the demo tree, and the small
     # programs the runtime check runs against a closed loopback port. Both are named here.
     # A third place is named for a different reason: the pipeline file installs the test tools,

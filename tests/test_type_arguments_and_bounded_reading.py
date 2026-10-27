@@ -139,15 +139,22 @@ def test_setup_py_forms(tmp_path, body, names):
 
 
 # ---------------------------------------------------------------- one long line
+def _best_time(fn, arg, runs=3):
+    """The fastest of a few timings: interference from other processes only ever adds time."""
+    best = float("inf")
+    for _ in range(runs):
+        start = time.perf_counter()
+        fn(arg)
+        best = min(best, time.perf_counter() - start)
+    return best
+
+
 @pytest.mark.parametrize("unit", ['"\\', "/["])
 def test_one_long_line_costs_linear_time(tmp_path, unit):
+    # 8x the input: linear work takes about 8x the time, quadratic about 64x; 20x lies between.
     small, large = unit * 8000, unit * 64000
-    start = time.perf_counter()
-    _strip_js_comments(small)
-    t_small = time.perf_counter() - start
-    start = time.perf_counter()
-    _strip_js_comments(large)
-    t_large = time.perf_counter() - start
+    t_small = _best_time(_strip_js_comments, small)
+    t_large = _best_time(_strip_js_comments, large)
     assert t_large < max(20 * t_small, 2.0), (t_small, t_large)
     _write(tmp_path, "a.js", large + "\n")
     _write(tmp_path, "b.html", "<script>" + large + "</script>\n")

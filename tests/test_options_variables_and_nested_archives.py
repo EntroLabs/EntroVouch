@@ -226,10 +226,11 @@ def test_opening_a_local_file_or_address_is_quiet(tmp_path):
 
 # ---------------------------------------------------------------- nested archives key_provenance cannot open
 def _zip(members: dict) -> bytes:
+    # A fixed member date, so the bytes (and the test ids built from them) do not change with the clock.
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         for k, v in members.items():
-            z.writestr(k, v)
+            z.writestr(zipfile.ZipInfo(k, date_time=(1980, 1, 1, 0, 0, 0)), v)
     return buf.getvalue()
 
 
@@ -240,7 +241,7 @@ def _encrypted_zip() -> bytes:
     return bytes(raw)
 
 
-@pytest.mark.parametrize("inner", [_encrypted_zip(), b"7z\xbc\xaf\x27\x1c" + bytes(64)])
+@pytest.mark.parametrize("inner", [_encrypted_zip(), b"7z\xbc\xaf\x27\x1c" + bytes(64)], ids=["encrypted-zip", "7z"])
 def test_an_unopenable_archive_inside_an_archive_is_listed(tmp_path, inner):
     _write(tmp_path, "outer.zip", _zip({"inner.bin": inner}))
     rep = key_provenance.scan_key_provenance(tmp_path)
@@ -696,3 +697,36 @@ def test_a_path_expression_a_digest_and_a_seed_number_are_not_key_material(tmp_p
 def test_a_vault_input_naming_the_field_to_read_is_a_label(tmp_path, src, flagged):
     _write(tmp_path, "tasks/main.yml", src)
     assert bool(key_provenance.scan_key_provenance(tmp_path, label="t").findings) is flagged, src
+
+
+def _zip_with_method(method: int) -> bytes:
+    """A one-member zip whose headers name compression `method`, built without that codec: the member is written
+    stored and the method field is patched in the local and the central header."""
+    key = _ARMOUR_LINE + "\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ\n-----END OPENSSH PRIVATE KEY-----\n"
+    raw = bytearray(_zip({"id_rsa": key}))
+    raw[8:10] = method.to_bytes(2, "little")
+    central = raw.find(b"PK\x01\x02")
+    raw[central + 10:central + 12] = method.to_bytes(2, "little")
+    return bytes(raw)
+
+
+def test_a_zstd_member_is_left_unread_and_named_on_every_python(tmp_path, monkeypatch):
+    """Python 3.13 cannot open a zstd member (method 93) and 3.14 can, through the libzstd it bundles, so the same tree
+    gave two reports. The member is now left unread on every Python, its codec never called, and the archive is
+    listed as not fully read."""
+    real = zipfile._get_decompressor
+
+    def refuse_zstd(method):
+        assert method != 93, "the zstd decompressor was asked for"
+        return real(method)
+    monkeypatch.setattr(zipfile, "_get_decompressor", refuse_zstd)
+    _write(tmp_path, "keys.zip", _zip_with_method(93))
+    rep = key_provenance.scan_key_provenance(tmp_path)
+    # (the fixture's member bytes are stored, so the file's own text still shows the armour; a real zstd member's
+    # would not. What is pinned here is that the member is not decompressed and the archive is named.)
+    assert rep.not_scanned["archives_not_fully_read"] == ["keys.zip"]
+    # the neighbour: the same member stored is read in full and its key is found
+    _write(tmp_path, "keys.zip", _zip_with_method(0))
+    rep = key_provenance.scan_key_provenance(tmp_path)
+    assert "keys.zip" not in rep.not_scanned.get("archives_not_fully_read", [])
+    assert [f["kind"] for f in rep.findings] == ["key-file-in-tree"]

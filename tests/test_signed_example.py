@@ -50,3 +50,17 @@ def test_the_signed_example_is_the_current_unsigned_audit():
     assert signed["findings_digest"] == unsigned["findings_digest"], (
         "the signed example no longer matches the regenerated audit: sign it again")
     assert signed["target"] == unsigned["target"] and signed["subject_digest"] == unsigned["subject_digest"]
+
+
+def test_a_root_that_is_not_64_hex_digits_is_refused_not_called_tampered():
+    """A malformed root is the caller's mistake: the API refuses it as the command line does. A well-formed root that
+    did not sign the report is still TAMPERED, and the published one still ATTESTED."""
+    import pytest
+    report = json.loads(SIGNED.read_text(encoding="utf-8"))
+    root = _published_root()
+    for bad in (root[:20] + "\u2026", "<the root above>", root[:63], root + "0", "g" * 64):
+        with pytest.raises(ValueError):
+            verify_report(report, expected_root=bad)
+    assert verify_report(report, expected_root=root.upper()) == (True, "ATTESTED")
+    assert verify_report(report, expected_root=" " + root + "\n") == (True, "ATTESTED")
+    assert verify_report(report, expected_root="f" * 64) == (False, "TAMPERED")

@@ -110,9 +110,9 @@ PORTABLE_TREE = {
     "notes.rst": "not read\n",
 }
 PORTABLE_DIGESTS = {
-    "egress": "a4e604143aadec32abdbf1fec8ad264d885db1b3f9ca80845370a47b8e841a73",
-    "cbom": "20d10cdc576f8fe97b586ffc713c5e08324cd60632280640ac5a4a7e4dcdf617",
-    "sbom": "b197f437e9885b32c68904d8060209089c4d95fe08c6cf2ae46f0ce137683bdd",
+    "egress": "636a05e26699a832c5a3c97e5033c12d018743cf0915fa0e22d30a38b336274b",
+    "cbom": "3f440ce7247d5e5ab966dc7b0973151b365201a13a27b1600fe4fc5fc6c534d6",
+    "sbom": "f0b6897cf33059cfbd38cedd51aa45c1941d3568874b19f0fbd9c22602223a0c",
 }
 
 
@@ -311,6 +311,15 @@ def test_the_standard_library_names_are_data_not_the_running_python():
     public = {n for n in sys.stdlib_module_names if not n.startswith("_") or n in ("__future__", "_thread")}
     assert public <= STDLIB_MODULE_NAMES
     assert {"asyncore", "telnetlib", "tomllib"} <= STDLIB_MODULE_NAMES     # removed in some versions, added in others
+    # Python 3.15 added `profiling` (PEP 799) and removed the `sre_*` modules; the table keeps both.
+    assert {"profiling", "sre_compile", "sre_constants", "sre_parse"} <= STDLIB_MODULE_NAMES
+
+
+def test_an_import_of_profiling_is_standard_library_on_every_python(tmp_path):
+    _write(tmp_path, "m.py", "import profiling.sampling\nimport somethirdparty\n")
+    rep = audit(tmp_path, label="t")
+    assert "profiling" not in rep.unlisted_imports
+    assert "somethirdparty" in rep.unlisted_imports
 
 
 def test_a_project_is_not_a_dependency_on_itself(tmp_path):

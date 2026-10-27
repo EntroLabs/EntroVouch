@@ -16,10 +16,10 @@ Then compare **one value** per report:
 
 | Report | Value to compare | Expected |
 |---|---|---|
-| `reports/egress.json` | `findings_digest` | `c55dd0c95357cc5cf213bac89ca29608df733e8655bd20ed06b3ceb5e6592535` |
+| `reports/egress.json` | `findings_digest` | `6fa9c3709015d36df6c10e0caf272994d7cbd28c1e7ca70cece560f345272b55` |
 | `reports/egress.json` | `subject_digest` | `0b1c519d12ce52b1801691b769d9eb3dbeda3f1d5c88d47da5b9174f9c113b2f` |
-| `reports/cbom.json` | `findings_digest` | `9bec81cacb2b6843c852a41e457bea8cf2a011afcfe2a201af77ec8008af3823` |
-| `reports/sbom.json` | `findings_digest` | `856181534bcca967c38779733539a373b99d1b52265fee3d70ffc7d2536b3686` |
+| `reports/cbom.json` | `findings_digest` | `4ffa7155986baf4120d342151712eef7e96f19f748f57c8ef71757ecbd7a2511` |
+| `reports/sbom.json` | `findings_digest` | `72cad7cde8c755eff795a686832e3f3bffc74537803454e6944100ff380a3ec4` |
 
 ```bash
 python -c "import json;print(json.load(open('examples/reports/egress.json'))['findings_digest'])"
@@ -37,18 +37,16 @@ every run.** `content_hash` covers the issuance timestamp, so two honest runs pr
 different values. The `key_provenance` report has no timestamp, so its `content_hash` matches
 when the label, the files read and the number of files in each skipped folder are the same.
 
-> **This is the mistake to avoid.** A reader who compares `content_hash`, sees a
-> mismatch and concludes the report was forged has followed the most obvious instinct
-> and reached the wrong answer. **All three digests are printed on the report itself,
-> each labelled with whether it reproduces**, so the right comparison is the easy one.
+> A reader who compares `content_hash`, sees a mismatch and concludes the report was
+> forged has reached the wrong answer. **All three digests are printed on the egress, CBOM
+> and SBOM reports, each labelled with whether it reproduces.**
 
-## An asymmetry we would rather state than have you find
+## `key_provenance` has no findings digest
 
-**`key_provenance` emits no findings digest.** Its report carries findings, a scope
-statement and a content hash with no timestamp in it, and it is not signed: re-run it
-and read the findings. Egress, CBOM and SBOM
-carry `findings_digest`. This is pinned in `tests/test_examples_reproduce.py` so it
-cannot silently become true of another tool without someone noticing.
+Its report carries findings, a scope statement and a content hash with no timestamp in
+it, and it is not signed: re-run it and read the findings. Egress, CBOM and SBOM
+carry `findings_digest`. `tests/test_examples_reproduce.py` fails if any other report
+loses its findings digest.
 
 ## One signed report
 
@@ -86,13 +84,13 @@ nothing:
 | `pricing.py` | pure computation, no egress | **nothing: the negative case** |
 | `tokens.py` | MD5, `random`, in-source HMAC key, JWT RS256, pyca `hashes.MD5()`, and PEM armour with no key inside | CBOM, key provenance. The armour is **not** reported: armour counts only when a key body follows it |
 
-`pricing.py`, `urls.py` and the local `motor` module matter as much as the hits.
-**An auditor that flags everything is not strict, it is unusable**, and the
-committed reports show it staying quiet where it should.
+`pricing.py`, `urls.py` and the local `motor` module matter as much as the hits: an
+auditor that flags everything is unusable, and the committed reports show this one
+reporting no network finding for any of them.
 
 ## Short version
 
-No account. No upload. The tools need nothing installed; the test suite needs `pytest`.
+No account or upload is needed. The tools need nothing installed; the test suite needs `pytest`.
 
 ```bash
 git clone https://github.com/EntroLabs/EntroVouch
@@ -118,7 +116,7 @@ layer: same tool, a third party on the signature.
   that is not on the list produces no finding, and the report names it in `unlisted_imports`
   instead. What the auditor catches when names are disguised, and what it misses, is
   measured in the root README's recall table. The reports state their scope in their
-  own body rather than leaving you to discover it.
+  own body.
 - **A signature, checked against a pinned root, proves origin and integrity, not correctness.** The reports in
   `reports/` are **UNSIGNED** on purpose: they are the half you can regenerate and compare yourself.
   One signed copy sits in `signed/`, described above.

@@ -78,13 +78,13 @@ def test_a_mac_keyed_by_public_text_is_not_accepted(signer):
     any form."""
     covenant = "Optimize systems for people, not margin extraction. One Covenant. Always."
     body = b'{"verdict":"CLEAN"}'
-    legacy_key = hashlib.sha3_256(covenant.encode()).digest()
-    legacy_sig = hmac.new(legacy_key, body, hashlib.sha3_256).hexdigest()
+    public_text_key = hashlib.sha3_256(covenant.encode()).digest()
+    public_text_sig = hmac.new(public_text_key, body, hashlib.sha3_256).hexdigest()
 
-    assert not verify_signature(body, {"algorithm": ALGORITHM, "ots": legacy_sig})
+    assert not verify_signature(body, {"algorithm": ALGORITHM, "ots": public_text_sig})
     assert not verify_signature(
         body,
-        {"algorithm": "HMAC-SHA3-256", "signature": legacy_sig},
+        {"algorithm": "HMAC-SHA3-256", "signature": public_text_sig},
         expected_root=signer.public_root,
     )
 

@@ -90,18 +90,35 @@ def test_verify_signature_never_raises(msg, blob, root):
 # ---------------------------------------------------------------------------
 # Reproducibility is the PRODUCT CLAIM, so it gets a property, not an example.
 # ---------------------------------------------------------------------------
+@pytest.fixture(scope="module")
+def label_tree(tmp_path_factory):
+    """Two small files, one with a finding, so the digest covers findings.
+
+    Small on purpose: the property is about the label, and an audit of this tree
+    takes milliseconds where one of the whole package takes seconds.
+    """
+    root = tmp_path_factory.mktemp("label_tree")
+    (root / "client.py").write_text(
+        "import requests\nrequests.get('https://h.example/x')\n", encoding="utf-8")
+    (root / "util.py").write_text("x = 1\n", encoding="utf-8")
+    return root
+
+
 @given(st.text(min_size=1, max_size=60).filter(lambda s: s.strip()))
 @SLOW
-def test_findings_digest_ignores_issuance_but_label_still_binds(label):
+def test_findings_digest_ignores_issuance_but_label_still_binds(label_tree, label):
     """`findings_digest` must exclude issuance fields and include the label.
 
     Two audits of the same tree under the SAME label must agree; under DIFFERENT
     labels they must not, because the label is part of the claim being made.
     """
-    a = dataclasses.asdict(audit(pathlib.Path("entrovouch"), label=label))
-    b = dataclasses.asdict(audit(pathlib.Path("entrovouch"), label=label))
+    a = dataclasses.asdict(audit(label_tree, label=label))
+    b = dataclasses.asdict(audit(label_tree, label=label))
+    assert a["findings"], "the tree must carry a finding, or the digest covers none"
     assert a["findings_digest"] == b["findings_digest"], "same label must reproduce"
     assert a["content_hash"] != b["content_hash"], "issuance must stay distinguishable"
+    other = dataclasses.asdict(audit(label_tree, label=label + "x"))
+    assert other["findings_digest"] != a["findings_digest"], "another label must not reproduce"
     body = json.loads(reproducible_body(a))
     assert body["target"] == label
 

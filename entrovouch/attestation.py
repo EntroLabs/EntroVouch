@@ -69,6 +69,10 @@ PREDICATE_TYPE_CBOM = "https://entroverse.com/attestation/cbom/v1"
 # nothing else.
 _ENVELOPE_KEYS = {"signature", "signature_algorithm", "public_root",
                   "content_hash", "integrity_tag", "subject"}
+# The signer the report names stays in the predicate as well: it is inside the signed body, and a Statement whose
+# signature block is removed must still say that it was signed, so that it reads as TAMPERED, not UNSIGNED.
+_IDENTITY_KEYS = {"signature_algorithm", "public_root"}
+_PREDICATE_EXCLUDED = _ENVELOPE_KEYS - _IDENTITY_KEYS
 
 
 def statement_subject(report_dict: dict) -> list[dict]:
@@ -128,7 +132,7 @@ def to_statement(report_dict: dict,
    : and, importantly, can tell that they are NOT verifying it, rather than
     assuming they are.
     """
-    predicate = {k: v for k, v in report_dict.items() if k not in _ENVELOPE_KEYS}
+    predicate = {k: v for k, v in report_dict.items() if k not in _PREDICATE_EXCLUDED}
 
     statement: dict = {
         "_type": STATEMENT_TYPE,
@@ -157,8 +161,8 @@ def verify_statement(statement: dict, expected_root: str | None = None) -> tuple
     """Check a Statement this module wrote: the report it carries is rebuilt (the predicate, with the subject and the
     signer the `signature` field names put back) and checked as that report is. Returns `(ok, status)` with the
     statuses of `verify_report`; `ok` only for ATTESTED."""
-    from .no_egress_auditor import (_identity_matches, canonical_body, findings_digest_matches, subject_matches,
-                                    verify_any)
+    from .no_egress_auditor import (_claims_signed, _identity_matches, canonical_body, findings_digest_matches,
+                                    subject_matches, verify_any)
     if not isinstance(statement, dict) or statement.get("_type") != STATEMENT_TYPE:
         return False, "TAMPERED"
     predicate, subject, sig = statement.get("predicate"), statement.get("subject"), statement.get("signature")
@@ -175,7 +179,7 @@ def verify_statement(statement: dict, expected_root: str | None = None) -> tuple
     # signer, the subject, a hash or a tag written there would travel unsigned beside the signed claim), the
     # predicate type of the predicate's own kind, and a signature block of four fields with this tool's note.
     if set(statement) - {"_type", "subject", "predicateType", "predicate", "signature"} \
-            or set(predicate) & _ENVELOPE_KEYS \
+            or set(predicate) & _PREDICATE_EXCLUDED \
             or statement.get("predicateType") != _PREDICATE_TYPES[predicate["tool"]]:
         return False, "TAMPERED"
     if sig is not None and (not isinstance(sig, dict) or set(sig) != {"algorithm", "public_root", "value", "note"}
@@ -186,15 +190,23 @@ def verify_statement(statement: dict, expected_root: str | None = None) -> tuple
     if not findings_digest_matches(report) or not subject_matches(report):
         return False, "TAMPERED"
     if sig is None:
-        return False, "UNSIGNED"
+        # a predicate that names a signer had a signature, and it was removed (a Statement written before the
+        # predicate carried the signer names none, and reads as unsigned as it did then)
+        return (False, "TAMPERED") if _claims_signed(predicate) else (False, "UNSIGNED")
     if not isinstance(sig, dict) or not isinstance(sig.get("value"), dict):
         return False, "TAMPERED"
+    if any(k in predicate and predicate[k] != sig.get(k.replace("signature_algorithm", "algorithm"))
+           for k in _IDENTITY_KEYS):
+        return False, "TAMPERED"        # the predicate names one signer and the signature block another
     report["signature_algorithm"] = sig.get("algorithm", "")
     report["public_root"] = sig.get("public_root", "")
     if not _identity_matches(report, sig["value"]):
         return False, "TAMPERED"
     if isinstance(expected_root, str):
         expected_root = expected_root.strip().lower()
+        # the same rule as `verify_report`: a root that is not 64 hex digits is the caller's mistake, not evidence
+        if len(expected_root) != 64 or any(c not in "0123456789abcdef" for c in expected_root):
+            raise ValueError("expected_root must be a public root of 64 hex digits")
     if not verify_any(canonical_body(report), sig["value"], expected_root=expected_root):
         return False, "TAMPERED"
     return (True, "ATTESTED") if expected_root else (False, "UNVERIFIED")

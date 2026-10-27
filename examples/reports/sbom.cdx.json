@@ -3,7 +3,7 @@
   "specVersion": "1.6",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-15T08:01:22.250596+00:00",
+    "timestamp": "2026-10-25T04:57:30.516078+00:00",
     "lifecycles": [
       {
         "phase": "pre-build"
@@ -14,7 +14,7 @@
         {
           "type": "application",
           "name": "ENTROVOUCH SBOM",
-          "version": "1.1.3"
+          "version": "1.1.4"
         }
       ]
     },
@@ -42,7 +42,7 @@
       },
       {
         "name": "entrovouch:findingsDigest",
-        "value": "856181534bcca967c38779733539a373b99d1b52265fee3d70ffc7d2536b3686"
+        "value": "72cad7cde8c755eff795a686832e3f3bffc74537803454e6944100ff380a3ec4"
       },
       {
         "name": "entrovouch:subjectDigest",

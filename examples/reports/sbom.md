@@ -1,15 +1,15 @@
 # ENTROVOUCH SBOM: DECLARED
 
 - **Target:** `entrovouch/examples/sample_service`
-- **Scanned:** 2026-10-15T08:01:22.250596+00:00
+- **Scanned:** 2026-10-25T04:57:30.516078+00:00
 - **Manifests read:** 1
 - **Declared components:** 1
 - **Generation context:** `pre-build` (source manifests, before build)
 - **Coverage:** `top-level-declared-only`
 - **CISA 2026 minimum elements:** NOT CLAIMED: source-manifest SBOM; component hashes, transitive coverage and licenses are labelled unknown rather than filled
-- **Findings digest (reproduces):** `856181534bcca967c38779733539a373b99d1b52265fee3d70ffc7d2536b3686`
+- **Findings digest (reproduces):** `72cad7cde8c755eff795a686832e3f3bffc74537803454e6944100ff380a3ec4`
 - **Subject digest (binds the manifests):** `899cdc1ae105d7e57072041b1e0d3b38096d7470e01d6c500ff4621e8b1fbdc5`
-- **Content hash (this issuance only, does NOT reproduce):** `b3edb22c62c334c387101ea87da7515b…`
+- **Content hash (this issuance only, does NOT reproduce):** `222105502586e6e20504d8d4b3d02613…`
 - **Signature:** UNSIGNED - content hash only, origin NOT attested
 
 > **Scope:** Software Bill of Materials from declared top-level dependencies in pyproject.toml (PEP 621 and Poetry), requirement files, setup.cfg, setup.py, Pipfile, conda environment files and package.json. Development groups, build requirements and npm devDependencies are declared but are not product dependencies, and are left out. Generation context: pre-build (source manifests). Transitive dependencies are NOT enumerated. Component hashes of executable artifacts are UNKNOWN: this tool does not see a build. Licenses and component producers are UNKNOWN unless present in the declaration, which they almost never are. package-lock.json / poetry.lock / uv.lock are not read (a lockfile is a resolved graph; this pass is the declaration). CISA 2026 Minimum Elements conformance is NOT CLAIMED. Unknown fields are labelled unknown-to-author, not withheld.

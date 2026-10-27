@@ -11,9 +11,9 @@
   "predicateType": "https://entroverse.com/attestation/no-egress-audit/v1",
   "predicate": {
     "tool": "ENTROVOUCH no-egress auditor",
-    "tool_version": "1.1.3",
+    "tool_version": "1.1.4",
     "target": "entrovouch/examples/sample_service",
-    "scanned_at_utc": "2026-10-15T08:01:19.258088+00:00",
+    "scanned_at_utc": "2026-10-25T04:57:29.354986+00:00",
     "files_scanned": 7,
     "files_not_read": 1,
     "verdict": "FINDINGS",
@@ -55,7 +55,9 @@
       "symbolic_links": 0
     },
     "subject_digest": "0b1c519d12ce52b1801691b769d9eb3dbeda3f1d5c88d47da5b9174f9c113b2f",
-    "findings_digest": "c55dd0c95357cc5cf213bac89ca29608df733e8655bd20ed06b3ceb5e6592535"
+    "findings_digest": "6fa9c3709015d36df6c10e0caf272994d7cbd28c1e7ca70cece560f345272b55",
+    "signature_algorithm": "UNSIGNED - content hash only, origin NOT attested",
+    "public_root": ""
   },
   "signature": null
 }

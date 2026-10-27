@@ -1,4 +1,5 @@
-# Runs the test suite on Linux, Windows and macOS under every supported Python, once more with pytest alone, and
+# Runs the test suite on Linux, Windows and macOS under Python 3.11 to 3.14, once more with pytest alone on Linux
+# (3.11, 3.14 and 3.15), and
 # builds the wheel and runs it from outside the repository.
 # It installs the test tools and nothing else; it publishes nothing and needs no secret.
 # Actions are pinned to commits and the test tools to versions, so a run tests this repository and
@@ -42,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.14"]
+        python: ["3.11", "3.14", "3.15"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1 (Node 24)

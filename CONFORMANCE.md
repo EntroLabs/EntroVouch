@@ -1,10 +1,9 @@
 # CONFORMANCE: what this project claims about the standards it names
 
-**Last verified 2026-10-17.** Regenerate when the answers change.
+**Last verified 2026-10-24.** Regenerate when the answers change.
 
 > **Naming a standard is a CHECKABLE claim.** A hostile reader can test it in an afternoon
-> using free published vectors, which makes it among the first things checked and the most
-> damaging to get wrong. So every standard this project's output or signer follows is listed below
+> using free published vectors. So every standard this project's output or signer follows is listed below
 > with what actually backs it: a test, or an explicit statement that conformance is not claimed.
 > Standards and regulations the documentation only cites are listed at the end, under "Cited, not
 > followed".
@@ -29,7 +28,7 @@ revision's schema. 1.7 (ECMA-424, 2nd edition) adds a standard list of algorithm
 elliptic curves for cryptographic assets. This emitter writes `assetType: algorithm` only, because the
 tool finds algorithms, not certificates or protocols.
 
-**A finding about the standard rather than about us:** CycloneDX 1.6 declares `specVersion` as
+The CycloneDX 1.6 schema itself declares `specVersion` as
 a plain string with `"1.6"` only as an *example* (no `enum`, no `const`), so a document claiming
 `specVersion: "9.9"` validates cleanly against the 1.6 schema. **Schema validation does not
 establish which specification a document follows**, so the 1.6 claim above is asserted separately
@@ -55,8 +54,7 @@ its own version field, so passing the schema establishes 2.1.0. Test:
 in-toto Statement shape (`subject` + typed `predicateType`); signatures are not DSSE, so a DSSE
 verifier **cannot** check them and must treat them as *unverified rather than absent*. The
 statement says so in its own `note` field rather than letting a tool assume it verified
-something. Interoperable at the payload, sovereign at the signature: a real trade, stated
-rather than finessed.
+something.
 
 <sub>Named in: `README.md`, `docs/ADAPTERS.md`, `entrovouch/attestation.py`, `pyproject.toml`</sub>
 
@@ -88,7 +86,7 @@ the strength of not having looked. Identifiers are weakness classes (`CWE-327`, 
 
 ### CSAF 2.0 (VEX profile)
 
-**SCHEMA VALIDATED. MANDATORY TESTS ASSERTED ONE BY ONE, NO CONFORMANCE CHECKER RUN.**
+**SCHEMA VALIDATED WHEN `jsonschema` IS INSTALLED (A CLEAN CLONE SKIPS IT). MANDATORY TESTS ASSERTED ONE BY ONE, NO CONFORMANCE CHECKER RUN.**
 `entrovouch/csaf.py` writes a `csaf_vex` document carrying the same statements as the
 CycloneDX VEX output. It is validated by a test against the CSAF 2.0 JSON schema published by
 OASIS, `tests/schemas/csaf-2.0.schema.json`, pinned in `tests/test_csaf.py` by a 64-bit prefix of its SHA-256. The standard's section 6.1
@@ -126,8 +124,9 @@ restored key file can reuse a one-time leaf, and nothing in a signature reveals 
 
 ### RFC 8554 and RFC 9858 (LMS and HSS hash-based signatures)
 
-**VERIFIED AGAINST THE PUBLISHED TEST VECTORS OF RFC 8554 AND RFC 9858 AND THE 8 LMS SIGVER VECTORS NIST PUBLISHES
-IN ACVP-SERVER (SHA-256/192 ONLY). NOT CAVP-VALIDATED. NOT NIST SP 800-208 VALIDATED. IT DOES NOT SIGN REPORTS.**
+**VERIFIED, FOR THE PARAMETER SETS THOSE VECTORS COVER, AGAINST THE PUBLISHED TEST VECTORS OF RFC 8554 AND RFC 9858
+AND THE 8 LMS SIGVER VECTORS NIST PUBLISHES IN ACVP-SERVER (SHA-256/192 ONLY).**
+**NOT CAVP-VALIDATED; NO CAVP OR CMVP VALIDATION AGAINST NIST SP 800-208 HAS BEEN RUN. IT DOES NOT SIGN REPORTS.**
 `entrovouch/lms.py` verifies LMS and HSS signatures for the SHA-256 parameter sets RFC 8554 defines (LM-OTS W1, W2,
 W4 and W8; LMS heights 5, 10, 15, 20 and 25) and for the parameter sets RFC 9858 adds (SHA-256/192, SHAKE256/256 and
 SHAKE256/192, the same W values and heights), and signs with an LMS key derived from a seed as RFC 8554 Appendix A
@@ -137,7 +136,8 @@ test case 2 is reproduced byte for byte from the private keys the appendix gives
 a test flips the low bit of each byte of each published public key and message, one byte at a time, and of a sample
 of signature bytes (each of the first 16 and the last 16, and every 13th), and asserts that every such change fails
 verification. The vectors are in `tests/vectors/rfc8554_appendix_f.json`,
-transcribed from Appendix F. Test: `tests/test_lms_rfc8554.py`.
+transcribed from Appendix F. Test: `tests/test_lms_rfc8554.py`. Appendix F covers heights 5 and 10 with W4 and W8 only:
+no published vector has been run for the RFC 8554 sets at heights 15, 20 or 25, or at W1 or W2.
 
 All 4 test cases of RFC 9858 Appendix A verify: A.1, `LMS_SHA256_M24_H5` with `LMOTS_SHA256_N24_W8`; A.2,
 `LMS_SHAKE_M24_H5` with `LMOTS_SHAKE_N24_W8`; A.3, `LMS_SHAKE_M32_H5` with `LMOTS_SHAKE_N32_W8`; A.4,
@@ -244,12 +244,10 @@ purl project's published test data is not run, so conformance is not claimed.
 ## What this file does and does not do
 
 - It states, per standard, what backs the name where this project uses it.
-- **It does not make any of them conformant.** Where it says NOT VALIDATED or NOT CLAIMED,
-  that is the current state and the work is unbuilt.
-- **Every path above is inside this repository.** A conformance document that cites
-  measurements its reader cannot open is asking to be taken on trust, in a package whose whole
-  argument is that you should not have to. Anything not reproducible from this checkout is not
-  cited here.
+- **It does not make any of them conformant.** Where it says NOT CLAIMED, that is the current
+  state and the work is unbuilt.
+- **Every path above is inside this repository**, so every measurement cited here can be re-run
+  from this checkout; nothing that cannot be is cited.
 
 Checked by `tests/test_conformance_claims.py` for the twelve sections it names: for each, that every file its "Named
 in" line points to names the standard; for eleven of them (all but in-toto Statement), that they carry their status

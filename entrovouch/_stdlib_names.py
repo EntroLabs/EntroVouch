@@ -1,6 +1,6 @@
 """The names of the Python standard library's top-level modules, as data.
 
-The union of `sys.stdlib_module_names` on Python 3.11, 3.12, 3.13 and 3.14, written out so
+The union of `sys.stdlib_module_names` on Python 3.11 through 3.15, written out so
 that a report does not depend on which of those versions ran the audit. Private (underscore)
 modules are left out. Python 2 names are added so that code written for both is not
 misread as importing third-party packages.
@@ -22,7 +22,7 @@ STDLIB_MODULE_NAMES = frozenset({
     "msvcrt", "multiprocessing", "netrc", "nis", "nntplib", "nt", "ntpath", "nturl2path", "numbers",
     "opcode", "operator", "optparse", "os", "ossaudiodev", "pathlib", "pdb", "pickle",
     "pickletools", "pipes", "pkgutil", "platform", "plistlib", "poplib", "posix", "posixpath",
-    "pprint", "profile", "pstats", "pty", "pwd", "py_compile", "pyclbr", "pydoc", "pydoc_data",
+    "pprint", "profile", "profiling", "pstats", "pty", "pwd", "py_compile", "pyclbr", "pydoc", "pydoc_data",
     "pyexpat", "queue", "quopri", "random", "re", "readline", "reprlib", "resource", "rlcompleter",
     "runpy", "sched", "secrets", "select", "selectors", "shelve", "shlex", "shutil", "signal",
     "site", "smtpd", "smtplib", "sndhdr", "socket", "socketserver", "spwd", "sqlite3",

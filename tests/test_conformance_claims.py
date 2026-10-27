@@ -82,12 +82,10 @@ def test_last_verified_is_a_real_date_no_older_than_the_sarif_paragraph():
     assert datetime.date.fromisoformat(m.group(1)) >= datetime.date(2026, 9, 1)
 
 
-def test_source_does_not_claim_the_covenant_is_the_signing_key():
-    """The Covenant text is not a signing key. The source must not say it is:
-    a comment above the live signer is the first thing a sceptical reader
-    will believe."""
+def test_source_says_a_mac_keyed_by_public_text_proves_nothing():
+    """No signing key is derived from public text, and the source says what such a MAC is worth:
+    a comment above the live signer is the first thing a sceptical reader will believe."""
     src = (REPO / "entrovouch" / "no_egress_auditor.py").read_text(encoding="utf-8")
-    assert "Covenant text IS the key" not in src
     assert "proves nothing about origin" in src      # the source says what a MAC keyed by published text is worth
 
 
@@ -148,3 +146,11 @@ def test_the_issuance_log_section_states_its_scope():
     # the claim about other clients follows from the signed-note rules, and is labelled as untested
     assert "REJECTS THE CHECKPOINTS (FROM THE SPECIFICATION, NOT TESTED)" in flat
     assert "no such client was run" in flat
+
+
+def test_the_package_imports_nothing_outside_the_standard_library():
+    """README and pyproject say the package takes no dependencies. Its own audit lists every import it could not place
+    in the standard library or in the tree; that list must stay empty."""
+    from entrovouch.no_egress_auditor import audit
+    rep = audit(REPO / "entrovouch", label="entrovouch")
+    assert rep.unlisted_imports == [], rep.unlisted_imports

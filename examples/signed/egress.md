@@ -1,18 +1,18 @@
 # ENTROVOUCH No-Egress Audit: FINDINGS
 
 - **Target:** `entrovouch/examples/sample_service`
-- **Scanned:** 2026-10-15T19:29:00.929688+00:00
+- **Scanned:** 2026-10-19T00:19:10.880425+00:00
 - **Files scanned:** 7 (1 more was not read: skipped directories, types this tool has no reader for, and links, listed below)
 - **Resolved locally, NOT counted as network imports:** `motor`: this tree supplies a top-level module of each name, which shadows any installed package. Check these if the tree vendors dependencies.
 - **Imported, and not known to this tool (2):** `cryptography`, `jwt`. These third-party modules are on none of this tool's lists, so it says nothing about what they do. Check them against what you know they are.
 - **Files of types this tool does not read:** 1 (`.md` (1))
 - **Parsed with:** Python 3.14
 - **Findings:** 3
-- **Findings digest (reproduces):** `c55dd0c95357cc5cf213bac89ca29608df733e8655bd20ed06b3ceb5e6592535`
+- **Findings digest (reproduces):** `6fa9c3709015d36df6c10e0caf272994d7cbd28c1e7ca70cece560f345272b55`
 - **Subject digest (binds the files this audit read):** `0b1c519d12ce52b1801691b769d9eb3dbeda3f1d5c88d47da5b9174f9c113b2f`
-- **Content hash (this issuance only, does NOT reproduce):** `8fed68d36c242c2eef6a574d50c80902…`
+- **Content hash (this issuance only, does NOT reproduce):** `8f23fea69be0c56c73a400ee75eb7bc7…`
 - **Signed by:** `eb309717634b3a9bd952aac903538bd9b3350d1b006f5176d1c87763ba87a96b` (Lamport-Merkle-SHA3-256 (hash-based, post-quantum))
-- **One-time key index:** 3  (stateful scheme; this leaf is now spent)
+- **One-time key index:** 4  (stateful scheme; this leaf is now spent)
 
 > **How to verify origin:** pin the publisher's root out of band, then `verify_report(json.load(f), expected_root=<root>)`. A status of `ATTESTED` means this report came from the holder of that root; `UNVERIFIED` means you did not pin one and origin is unproven.
 

@@ -17,7 +17,7 @@ tree changes the version (the rule is in `entrovouch/_version.py`) and regenerat
 python -m pytest -q
 ```
 
-The suite runs on Python 3.11 to 3.14 with `pytest` alone; `pip install -e ".[test]"` adds the property-based and
-schema tests. The package itself takes no dependencies outside the standard library, and a test enforces that.
+The suite runs on Python 3.11 to 3.15 with `pytest` alone; `pip install -e ".[test]"` adds the property-based and
+schema tests. The package itself takes no dependencies outside the standard library.
 
 Contributions are accepted under the project's [Apache License 2.0](LICENSE).

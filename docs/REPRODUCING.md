@@ -10,7 +10,7 @@
 
 All three are printed on the report, each labelled. On the egress, CBOM and SBOM reports `content_hash` covers the time
 the report was issued, so it differs on every run. Two reports with the same findings digest and different content hashes are the same result,
-issued twice. `key_provenance` has no findings digest: re-run it and read the findings. Its `content_hash` has no issue time, but
+issued twice. `key_provenance` has no findings digest and no subject digest: re-run it and read the findings. Its `content_hash` has no issue time, but
 it matches only when the label, the files read (line endings aside) and the number of files in each
 skipped folder (`.git/`, caches) are the same.
 
@@ -30,7 +30,7 @@ so compare digests on the same tree with the same label.
 
 ## One tree, one report
 
-Five things that differ between machines are taken out of the result.
+Six things that differ between machines are taken out of the result.
 
 - **Where the tree sits.** Directories are skipped by their path inside the tree, never by the folders above it.
 - **How the tree's path was typed.** The tree is known by the name its folder is stored under, read from the
@@ -49,6 +49,9 @@ Five things that differ between machines are taken out of the result.
   arrays or inline tables, and Python source of at most 4,194,304 characters), so a file past it is reported as not
   read on every version and machine. Details:
   [WHAT_IS_READ.md](WHAT_IS_READ.md).
+- **Which Python ran the audit.** Whether an import is standard library is read from a fixed list, the union of the
+  module names of Python 3.11 to 3.15, not from the Python that runs the tool. A module one version added (`tomllib`,
+  `profiling`) or removed (`asyncore`, `sre_parse`) is standard library on every version.
 
 Each file is read as one version for the whole run. If it changes while it is being read, the run stops with exit 2
 rather than report on two versions.
@@ -65,8 +68,8 @@ A stand-in of any other shape is read, so on Windows it can add a finding but ne
 this; git's index, which the tree's author writes, does not.
 
 The rules are tested on Windows and on Linux (Ubuntu 24.04, ext4). The suite was also run by hand on an ext4
-folder set to ignore case, which keeps a path's typed case as macOS does; no automated test creates one. A test pins the digests of one tree, and every system gives the same
-values. The authors have not run macOS on a machine of their own. The test workflow runs the suite, including that
+folder set to ignore case, which keeps a path's typed case as macOS does; no automated test creates one. A test pins the digests of one tree, and every system it has run on
+gives the same values. The authors have not run macOS on a machine of their own. The test workflow runs the suite, including that
 pinned-digest test, on macOS with Python 3.11, 3.12, 3.13 and 3.14 for every push to `main` and every pull request;
 its [run history](https://github.com/EntroLabs/EntroVouch/actions/workflows/tests.yml) is the record for each version. If a digest ever differs between
 systems, check the operating system first.

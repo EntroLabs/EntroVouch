@@ -126,12 +126,14 @@ RULES: dict[str, dict[str, str]] = {
     },
     "startup-exec": {
         "name": "StartupExecution",
-        "short": "A .pth line that Python executes at interpreter start",
+        "short": "A .pth line or .start entry point that Python runs at interpreter start",
         "full": (
             "Python's site module executes every line of a .pth file that "
             "begins with import, at every interpreter start, when the file is "
-            "in a site directory. The line is analysed like Python source; "
-            "modules it imports from outside the audited tree are not."
+            "in a site directory; from Python 3.15 it also strips leading "
+            "spaces first, so an indented import line runs, and it calls each "
+            "entry point a .start file names. The line is analysed like Python "
+            "source; modules it imports from outside the audited tree are not."
         ),
     },
     "network-call": {

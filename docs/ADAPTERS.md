@@ -49,8 +49,10 @@ checks it as it checks that report; a DSSE verifier cannot do this.
   other than its kind's, another note) is `TAMPERED`.
 - Its subject names SHA3-256 as in-toto does (`sha3_256`). A Statement written with the reports' name for it
   (`sha3-256`) verifies the same.
-- A Statement whose `signature` is null is `UNSIGNED`. The signer is named only in that field, so a Statement with it
-  emptied cannot be told from one made unsigned, and neither verifies.
+- A Statement whose `signature` is null is `UNSIGNED` only when its predicate names no signer, as 1.1.3 wrote them.
+  From 1.1.4 the predicate carries `signature_algorithm` and `public_root` inside the signed body, so removing the
+  signature gives `TAMPERED`. Removing those two predicate fields as well gives `UNSIGNED`: the Statement then reads
+  as an unsigned one, which never verifies.
 
 ## `timestamp`
 

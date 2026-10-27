@@ -405,6 +405,8 @@ def verify_signature(message: bytes, sig: dict, expected_root: str | None = None
     """
     if not isinstance(sig, dict) or not isinstance(message, (bytes, bytearray, memoryview)):
         return False
+    if isinstance(expected_root, str):
+        expected_root = expected_root.strip().lower()   # a root pasted in capitals or with a newline is the same root
     try:
         if sig.get("algorithm") != ALGORITHM:
             return False
