@@ -110,8 +110,9 @@ audit(Path("/path/to/project"), label="org/repo@commit").findings_digest
 | `subject_digest` | yes, per tree and tool | *Which tree was audited?* |
 | `content_hash` | no for egress, CBOM and SBOM; yes for `key_provenance` with the same label and tree | *Is this the exact artifact I was handed?* |
 
-Compare `findings_digest`; on the egress, CBOM and SBOM reports `content_hash` covers the time of issue and differs
-on every run. `key_provenance` has no findings digest: re-run it and read the findings. Its `content_hash` has no
+Compare `findings_digest`; on the egress, CBOM and SBOM reports `content_hash` covers the time of issue, so it differs
+between runs issued at different times. The time is as fine as the system clock: on Windows before Python 3.13 it
+moves about every 15.6 ms, and two runs of a small tree inside one tick give the same report. `key_provenance` has no findings digest: re-run it and read the findings. Its `content_hash` has no
 issue time and matches when the label, the files read (line endings aside) and the number of files in each
 skipped folder, such as `.git/`, are the same. Details: [docs/REPRODUCING.md](docs/REPRODUCING.md).
 

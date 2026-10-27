@@ -32,9 +32,10 @@ evidence, not proof.
 
 ## What will NOT match, and why that is correct
 
-On the egress, CBOM and SBOM reports, `content_hash` and `scanned_at_utc` **differ on
-every run.** `content_hash` covers the issuance timestamp, so two honest runs produce two
-different values. The `key_provenance` report has no timestamp, so its `content_hash` matches
+On the egress, CBOM and SBOM reports, `content_hash` and `scanned_at_utc` **differ between
+runs issued at different times.** `content_hash` covers the issuance timestamp, so two honest
+runs produce two different values, unless both fall inside one tick of the system clock (about
+15.6 ms on Windows before Python 3.13). The `key_provenance` report has no timestamp, so its `content_hash` matches
 when the label, the files read and the number of files in each skipped folder are the same.
 
 > A reader who compares `content_hash`, sees a mismatch and concludes the report was

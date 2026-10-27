@@ -26,6 +26,8 @@ import json
 import os
 import pathlib
 import sys
+import time
+from datetime import datetime, timezone
 
 import pytest
 
@@ -60,6 +62,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from entrovouch.no_egress_auditor import (  # noqa: E402
     audit, canonical_body, reproducible_body, verify_report, _subject_name,
 )
+from entrovouch import no_egress_auditor  # noqa: E402
 from entrovouch.signer import MerkleSigner, verify_signature  # noqa: E402
 
 SLOW = settings(max_examples=40, deadline=None,
@@ -113,9 +116,17 @@ def test_findings_digest_ignores_issuance_but_label_still_binds(label_tree, labe
     labels they must not, because the label is part of the claim being made.
     """
     a = dataclasses.asdict(audit(label_tree, label=label))
+    # An audit of this tree takes milliseconds, and on Windows before Python 3.13 the clock behind
+    # `scanned_at_utc` moves about every 15.6 ms, so two audits can share one issuance time and then
+    # one report. Wait until the clock the auditor reads has moved, so the second audit is a
+    # different issuance.
+    issued, deadline = datetime.fromisoformat(a["scanned_at_utc"]), time.monotonic() + 5
+    while no_egress_auditor.datetime.now(timezone.utc) <= issued and time.monotonic() < deadline:
+        time.sleep(0.001)
     b = dataclasses.asdict(audit(label_tree, label=label))
     assert a["findings"], "the tree must carry a finding, or the digest covers none"
     assert a["findings_digest"] == b["findings_digest"], "same label must reproduce"
+    assert a["scanned_at_utc"] != b["scanned_at_utc"], "the clock did not move in 5 s"
     assert a["content_hash"] != b["content_hash"], "issuance must stay distinguishable"
     other = dataclasses.asdict(audit(label_tree, label=label + "x"))
     assert other["findings_digest"] != a["findings_digest"], "another label must not reproduce"

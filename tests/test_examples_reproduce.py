@@ -19,7 +19,7 @@ WHAT IT COMPARES, and what it deliberately does not
   **This is the comparison.**
 · `subject_digest` : binds the report to the audited tree. Also compared.
 · `content_hash`   : on the egress, CBOM and SBOM reports, covers the issuance
-  timestamp and is EXPECTED to differ on every run. Comparing it is the mistake the README warns readers away from, so
+  timestamp and is EXPECTED to differ between runs issued at different times. Comparing it is the mistake the README warns readers away from, so
   this test must not make it either.
 """
 from __future__ import annotations
